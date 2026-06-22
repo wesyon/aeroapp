@@ -1,0 +1,27 @@
+# AERO API — Apache/LiteSpeed (Hostinger) config for public_html/api/
+
+# Route every /api/* request that isn't a real file to the front controller,
+# so /api/findings/summary etc. reach index.php (no -S router in production).
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+# Only index.php should be directly reachable; block the source/support files.
+<FilesMatch "\.(env|sql|md|lock|json)$">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(Db|Env|Http|FacClient|CsvSource)\.php$">
+  Require all denied
+</FilesMatch>
+
+# Block direct access to the lib/, routes/, and sync/ directories' internals.
+# routes/*.php are meant to be require()d by index.php (they assume $pdo and the
+# q_*/json_out helpers exist); hitting them directly would fatal, so deny them.
+RedirectMatch 403 ^/api/(lib|sync|routes)/.*$
+
+# Dotfiles
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>

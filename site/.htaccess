@@ -1,0 +1,37 @@
+# AERO frontend — deploys to public_html/.htaccess (Vite copies public/ into dist/)
+
+# Never serve dotfiles from the web root (.env, .user.ini, .htaccess, etc.).
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+
+# Single-page app fallback: serve index.html for client routes, but NOT for
+# /api/* (handled by api/.htaccess) and not for real files/dirs (assets).
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} !^/api/
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Light caching for hashed build assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+</IfModule>
+
+# Security headers (inherited by /api responses too).
+# CSP: the Vite build has no inline scripts; 'unsafe-inline' for styles only
+# (React/Recharts set style attributes). No external origins are used.
+# HSTS: no includeSubDomains/preload — the hostingersite.com preview alias and
+# any future subdomains must keep working independently.
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Strict-Transport-Security "max-age=15552000"
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>

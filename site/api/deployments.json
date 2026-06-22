@@ -1,0 +1,1342 @@
+[
+    {
+        "date":  "2026-06-18 17:35",
+        "commit":  "c59d6fb",
+        "changes":  [
+                        "USAspending tab: Group by on both views; cleaner Comparative; filter polish"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 16:44",
+        "commit":  "66d07fd",
+        "changes":  [
+                        "USAspending tab: filter bar above cards; view toggle + FY in the filter row"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 15:00",
+        "commit":  "df32b6e",
+        "changes":  [
+                        "Related UEIs: resolve more names, sort named-first, flag unresolved count"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 14:48",
+        "commit":  "a109d50",
+        "changes":  [
+                        "Entity Info: move Related UEIs to the bottom"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 14:04",
+        "commit":  "67ad436",
+        "changes":  [
+                        "Rename \"Data Dictionary\" → \"Data Catalog\""
+                    ]
+    },
+    {
+        "date":  "2026-06-18 14:01",
+        "commit":  "61d6d54",
+        "changes":  [
+                        "Data Dictionary: show DB size against the quota cap (X MB of Y MB)",
+                        "Settings: caption no longer says counts are estimates (they\u0027re now mostly exact)"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 13:35",
+        "commit":  "650f55b",
+        "changes":  [
+                        "Data Status / Dictionary: exact row counts for small/moderate tables"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 13:24",
+        "commit":  "6b5bea2",
+        "changes":  [
+                        "Data Dictionary: add usa_award_txn_month; align columns across sections"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 13:20",
+        "commit":  "7d36c8e",
+        "changes":  [
+                        "Settings: remember the selected tab across refreshes",
+                        "Parking lot: note USAspending outlays-by-FY as deferred"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 12:00",
+        "commit":  "d11a417",
+        "changes":  [
+                        "Nightly: fold rollup members into the --oldest queue (no manual member sync)",
+                        "Comparative: format negative obligations + sane swing badges"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 11:34",
+        "commit":  "93f76ae",
+        "changes":  [
+                        "USAspending sync: add --where=members / --where=state-members (rollup components)"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 10:56",
+        "commit":  "d13b01b",
+        "changes":  [
+                        "USAspending sync: remove the page cap (no truncation)",
+                        "Nightly: wire sync_usa_txns (action-date transaction months) into both runners",
+                        "Fix slow USAspending tab on large rollups: covering index for CFDA titles"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 09:09",
+        "commit":  "1d30e43",
+        "changes":  [
+                        "USAspending tab: reconcile onto main (action-date FY, by-program Comparative, rollup)",
+                        "deploy.ps1: fail fast on host blips (SSH ConnectTimeout + ServerAlive)"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 08:55",
+        "commit":  "f0729d8",
+        "changes":  [
+                        "Extend the sub-agency \"+N\" badge cap to the QC and Evaluation tabs"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 08:18",
+        "commit":  "c905c79",
+        "changes":  [
+                        "Finding sub-agency detail; cap the Findings-tab badges"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 08:04",
+        "commit":  "6185427",
+        "changes":  [
+                        "Chain tab: sortable Finding/Recurrence columns; move Passthrough after Questioned Costs"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 07:55",
+        "commit":  "96c8f4c",
+        "changes":  [
+                        "Chain tab: hide the documented KPI when it just repeats traced"
+                    ]
+    },
+    {
+        "date":  "2026-06-18 07:50",
+        "commit":  "19f87ec",
+        "changes":  [
+                        "Chain tab: per-entity repeat-finding recurrence lineage",
+                        "Local nightly: run the SAM extract / reference / crosswalk weekly on Saturday",
+                        "Nightly: run SAM detail enrichment LAST + cap it with timeout (no rescore stall)",
+                        "pull_from_prod: add -TopUp to enrich the non-HHS tail in one command",
+                        "Make prod the sole SAM-API consumer; add prod-\u003elocal puller",
+                        "Run SAM detail enrichment on prod only (don\u0027t compete for the shared 1,000/day key)"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 13:33",
+        "commit":  "186a01f",
+        "changes":  [
+                        "Size the SAM detail nightly chunk to the 1,000/day cap (2500 -\u003e 8000)"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 13:24",
+        "commit":  "a77662a",
+        "changes":  [
+                        "SAM entity detail enrichment: structure / business types / NAICS",
+                        "Passthrough: keep the ⚑ flag on \"None on file\" when the unaudited counterparty got ≥$1M"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 13:06",
+        "commit":  "6dcacab",
+        "changes":  [
+                        "Entity Info: fill Purpose/type + Exclusion status from data we already hold"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 12:56",
+        "commit":  "7a46fee",
+        "changes":  [
+                        "Passthrough \"Audited\": replace blank \"—\" with meaningful status",
+                        "Parking lot: state-component false positives in the Passthrough audit flag"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 12:37",
+        "commit":  "4c1dc01",
+        "changes":  [
+                        "Passthrough \"Audited\": show off-HHS-scope single audits, not false gaps"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 12:20",
+        "commit":  "ae0d201",
+        "changes":  [
+                        "Backfill the additional-UEI hub so SAM enrichment can resolve them"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 12:06",
+        "commit":  "285bfcc",
+        "changes":  [
+                        "Explain why sync rows are skipped (Data Status \"Incomplete sync runs\" panel)"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 12:00",
+        "commit":  "3a86ffb",
+        "changes":  [
+                        "Nightly heartbeat: surface/alert on failed or missed scheduled syncs"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 11:32",
+        "commit":  "38d271b",
+        "changes":  [
+                        "Guard compute_scores against the absent local-only sam_assistance_subaward"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 11:27",
+        "commit":  "831b9c4",
+        "changes":  [
+                        "Decouple grantee/evaluation/repeat/subaward readers from the score"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 11:16",
+        "commit":  "ea4c9ea",
+        "changes":  [
+                        "Decouple Search from the score: recipients.php reads the entity directory",
+                        "Decouple foundation: entity hub becomes the always-fresh recipient directory",
+                        "Bust the repeat_* rollup cache on every sync",
+                        "Nightly: weekly OPTIMIZE to reclaim InnoDB churn bloat"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 09:24",
+        "commit":  "7a0f0fc",
+        "changes":  [
+                        "Unify repeat-finding lineage depth into one kernel (lib/Lineage.php)"
+                    ]
+    },
+    {
+        "date":  "2026-06-17 07:57",
+        "commit":  "0e45418",
+        "changes":  [
+                        "Drop 4 unused indexes to reclaim ~314 MB on the quota-bound prod DB"
+                    ]
+    },
+    {
+        "date":  "2026-06-16 17:07",
+        "commit":  "a561446",
+        "changes":  [
+                        "Repeat findings dashboard + lineage detail; additional-UEI hub; fix migration drift",
+                        "Local dev: one-click stack launcher + control panel"
+                    ]
+    },
+    {
+        "date":  "2026-06-15 13:51",
+        "commit":  "8f643e7",
+        "changes":  [
+                        "Web: mobile drawer nav + horizontal-scroll tables",
+                        "Prod: keep heavyweight tables off the quota-bound DB"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 13:46",
+        "commit":  "7a8e8a3",
+        "changes":  [
+                        "Settings: add Data Dictionary tab",
+                        "Parking lot: Data Status exact row counts (vs InnoDB estimates)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 13:26",
+        "commit":  "13c3d80",
+        "changes":  [
+                        "Data Status: reflect the subaward-edge architecture (fix false \"No data\")",
+                        "Fix stale index name in footprint-query comment"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 13:02",
+        "commit":  "4fac68a",
+        "changes":  [
+                        "Settings: rename the \u0027Settings\u0027 tab to \u0027Agency\u0027"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 13:00",
+        "commit":  "ccfaa5f",
+        "changes":  [
+                        "Settings: hide the agency picker in prod (HHS-only), keep crosswalk visible"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 12:59",
+        "commit":  "749d437",
+        "changes":  [
+                        "Settings: hide State Crosswalk in prod again (prod is HHS-only)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 12:58",
+        "commit":  "ff1ac48",
+        "changes":  [
+                        "Crosswalk: hide the Note column"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 12:56",
+        "commit":  "bf40d0c",
+        "changes":  [
+                        "Settings: show State Crosswalk in prod as a read-only reference"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 12:00",
+        "commit":  "639f60e",
+        "changes":  [
+                        "Evaluation dropdown: drop for-profit/foreign (no FAC data, matches search)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 11:59",
+        "commit":  "61593bc",
+        "changes":  [
+                        "Evaluation: accept the foreign entity type (was 400) + empty-scope message"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 11:54",
+        "commit":  "265a769",
+        "changes":  [
+                        "Biennial filers: stop flagging off-cycle years as missing (2 CFR 200.504)",
+                        "Drop redundant idx_awards_uei on fac_federal_awards (~146 MB index)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 11:20",
+        "commit":  "cab88e8",
+        "changes":  [
+                        "Consistent entity-type dropdown order/labels + remember search filters"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 11:06",
+        "commit":  "d9cb51a",
+        "changes":  [
+                        "Search: default to All federal + All entity types"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 11:00",
+        "commit":  "c3e6655",
+        "changes":  [
+                        "Search: add \"US Territories\" entity-type facet (split from State Govt)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 10:44",
+        "commit":  "53debe5",
+        "changes":  [
+                        "Passthrough: recognize component units covered by a parent\u0027s Single Audit"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 10:15",
+        "commit":  "0d751c0",
+        "changes":  [
+                        "Passthrough: dedupe programs across years; default year falls back to most recent"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 09:57",
+        "commit":  "16e2999",
+        "changes":  [
+                        "Passthrough: Entity Type column; flag only entities that owe a Single Audit"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 09:37",
+        "commit":  "f09c6e5",
+        "changes":  [
+                        "Passthrough: Max award column (+ \u003e=$1M-no-audit flag), default year to latest audit"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 09:28",
+        "commit":  "1fdb8a7",
+        "changes":  [
+                        "Subaward edge: scope years to 2022-present (FAC data range)"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 09:24",
+        "commit":  "74c922a",
+        "changes":  [
+                        "Passthrough: year filter (re-grain edge table by year), drop Period column",
+                        "Passthrough: drop AERO tier, add program names / audit status / share / location"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 08:57",
+        "commit":  "bcb5238",
+        "changes":  [
+                        "Rename Subrecipients tab to Passthrough with two inner sub-tabs"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 08:54",
+        "commit":  "433e4c3",
+        "changes":  [
+                        "Subrecipients: \"Show all\" to lift the 500-row display cap"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 08:46",
+        "commit":  "c70dbea",
+        "changes":  [
+                        "Subrecipients tab: subaward flow from a pre-aggregated edge table"
+                    ]
+    },
+    {
+        "date":  "2026-06-12 08:31",
+        "commit":  "3fec621",
+        "changes":  [
+                        "SAM registration: resolve blanks via entity API (ID Assigned / Not Found)",
+                        "Nightly: prune non-HHS reports to maintain HHS scope on prod"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 22:01",
+        "commit":  "8b7cacf",
+        "changes":  [
+                        "prod nightly: skip subawards (not full backfill) when table empty pre-seed"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 21:52",
+        "commit":  "4e628b9",
+        "changes":  [
+                        "gitattributes: force LF on *.sh (host cron scripts must not get CRLF)",
+                        "Prod self-sufficient nightly: USAspending --oldest staggered mode + new aero_nightly.sh"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 21:36",
+        "commit":  "fa1aa8e",
+        "changes":  [
+                        "deploy.ps1: read deployment log as UTF-8 (fix mojibake blowup)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 21:29",
+        "commit":  "8ec0cf6",
+        "changes":  [
+                        "Eval L1: confirm missing audit years via award/subaward activity"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 20:57",
+        "commit":  "75e8929",
+        "changes":  [
+                        "Data Status console: richer, read-only in prod (no buttons)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 20:24",
+        "commit":  "079ddb0",
+        "changes":  [
+                        "Fix 138 orphaned fac_finding_awards rows (award-ref padding drift)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:35",
+        "commit":  "8e0f850",
+        "changes":  [
+                        "Search: resolve SAM registration across the crosswalk group, not just current UEI"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:29",
+        "commit":  "9a9b649",
+        "changes":  [
+                        "QC tab \u0027as stated\u0027: show the full questioned-cost narrative, not a preview"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:24",
+        "commit":  "cf09e06",
+        "changes":  [
+                        "deploy.ps1: upload api/ and dist/ as single tarballs (faster deploys)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:19",
+        "commit":  "bfbb0a6",
+        "changes":  [
+                        "QC tab: program cell shows ALN code + program name (readability)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:15",
+        "commit":  "8c191ad",
+        "changes":  [
+                        "Fix: $qcPreview out of scope in the findings array_map (grantee 500)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 19:04",
+        "commit":  "46c7959",
+        "changes":  [
+                        "QC \u0027as stated\u0027 preview: trim at word boundary + ellipsis (no mid-word cuts)",
+                        "QC tab: remove the \u0027By sub-agency / agency\u0027 breakdown"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 18:19",
+        "commit":  "219f0a8",
+        "changes":  [
+                        "Audit tail: FAC-sourced eval year (B5), Review-view sort (F3), gated prod push (I3), keyboard access",
+                        "Security: response headers + per-IP rate limit on the public API"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 18:09",
+        "commit":  "42b2d68",
+        "changes":  [
+                        "Shared rule helpers in lib/Rules.php + run locks for derived-data scripts (audit B3, S2)",
+                        "deploy.ps1: backup prod + sanity-floor the source before -RefreshData (audit I1)",
+                        "Subawards: data-coverage visibility + gap-aware update strategy (audit S1)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 17:58",
+        "commit":  "e9882e3",
+        "changes":  [
+                        "Scoring: detect same-year multi-UEI filing collisions instead of silently dropping"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 17:52",
+        "commit":  "4e35e87",
+        "changes":  [
+                        "Admin status: date the crosswalk source from state_uei.updated_at"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 17:47",
+        "commit":  "e2f5870",
+        "changes":  [
+                        "Subaward sync: survive quota-wall sleeps that outlive the DB session"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 17:30",
+        "commit":  "8cd9c33",
+        "changes":  [
+                        "Profile: restore exclusion/debarment detail (Entity Info card + active-exclusion banner)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 17:24",
+        "commit":  "b670b7b",
+        "changes":  [
+                        "Audit quick wins: perf indexes, clamped due dates, cache busting, deploy smoke check",
+                        "gitignore: Claude Code session config (.claude/)",
+                        "Deploy target: aeroapp.online (moved from temp subdomain)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:59",
+        "commit":  "ce9acd2",
+        "changes":  [
+                        "Profile header: tier/score badge is dev-only"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:54",
+        "commit":  "c55a9ac",
+        "changes":  [
+                        "Search Recipients: EIN, SAM registration, audit due date; gate score/tier"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:43",
+        "commit":  "b8c6f43",
+        "changes":  [
+                        "Align expanded sub-table columns across instances"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:37",
+        "commit":  "d720d42",
+        "changes":  [
+                        "Evaluation framework table: readability and language pass"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:31",
+        "commit":  "6828e87",
+        "changes":  [
+                        "Eval Dashboard (Enforcement Command Center, dev-only); log fills page"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 13:05",
+        "commit":  "1e190f8",
+        "changes":  [
+                        "Profile L1 expansion at zero count; eval table polish",
+                        "deploy.ps1: fix PS5.1 JSON array double-wrap in the deployment log"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 12:48",
+        "commit":  "d4f6a0f",
+        "changes":  [
+                        "Evaluation level redefinitions, review-table polish, deployment log"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 10:53",
+        "commit":  "77476e2",
+        "changes":  [
+                        "Table 2: drop the level chip from the posture column"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 10:51",
+        "commit":  "1522f80",
+        "changes":  [
+                        "Table 2: result reads \"L# Review\" / \"No Review Required\""
+                    ]
+    },
+    {
+        "date":  "2026-06-11 10:48",
+        "commit":  "1d711e5",
+        "changes":  [
+                        "Table 2: show the failing level\u0027s count next to the posture"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 10:44",
+        "commit":  "be11f1e",
+        "changes":  [
+                        "Evaluation: Table 2 view (PASS/FAIL + posture)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 09:27",
+        "commit":  "50caaae",
+        "changes":  [
+                        "Compliance mix indicator selector; drop the momentum map option"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 08:57",
+        "commit":  "8ec8353",
+        "changes":  [
+                        "Trim dead fields from the evaluation payload (~8x smaller)"
+                    ]
+    },
+    {
+        "date":  "2026-06-11 08:53",
+        "commit":  "94a1ec7",
+        "changes":  [
+                        "Cache every evaluation type/state combo (6h), not just the default"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 21:52",
+        "commit":  "a372ccc",
+        "changes":  [
+                        "Overview: add the Evaluation framework section; gate scoring internals"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 21:43",
+        "commit":  "59f0ada",
+        "changes":  [
+                        "Evaluation dashboard refinements + per-state rollup attribution fix"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 20:48",
+        "commit":  "2f48289",
+        "changes":  [
+                        "Evaluation page: Table | Dashboard tabs with a visual dashboard"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 18:05",
+        "commit":  "755fde2",
+        "changes":  [
+                        "Evaluation dashboard: entity-type/state filters, Excel export, drill links"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 16:53",
+        "commit":  "575e7f4",
+        "changes":  [
+                        "Consolidate multi-UEI state governments into one entity"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 16:53",
+        "commit":  "922c1a2",
+        "changes":  [
+                        "Evaluation dashboard polish: sort + L7 color + card captions"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 15:59",
+        "commit":  "8141ae6",
+        "changes":  [
+                        "Evaluation dashboard: 50 states + DC only (drop territories)"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 15:56",
+        "commit":  "2907aa3",
+        "changes":  [
+                        "Evaluation dashboard: one KPI card per framework level"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 15:50",
+        "commit":  "a7596f2",
+        "changes":  [
+                        "Evaluation nav page: 7-level dashboard across all state governments"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 15:34",
+        "commit":  "a552b10",
+        "changes":  [
+                        "Evaluation tab Excel export + per-state workbook generator"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 14:44",
+        "commit":  "14af2b6",
+        "changes":  [
+                        "Findings tab: show major-program status on linked awards"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 14:29",
+        "commit":  "1632b7c",
+        "changes":  [
+                        "Survive dead DB connections during long sync stalls"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 13:54",
+        "commit":  "15165b0",
+        "changes":  [
+                        "sync_subawards: the quota is DAILY - ride it out; nightly chain hardened"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:51",
+        "commit":  "5ebdc02",
+        "changes":  [
+                        "Drop dead /api/scores route; populate entity.first_seen"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:48",
+        "commit":  "8b7bfdb",
+        "changes":  [
+                        "sync_subawards: survive hourly quota walls; pace with headroom"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:42",
+        "commit":  "c485b58",
+        "changes":  [
+                        "sync_fac: date-only filter for the resubmission endpoint"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:34",
+        "commit":  "00e8f83",
+        "changes":  [
+                        "sync_fac: resubmission endpoint is best-effort"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:29",
+        "commit":  "e70cb7e",
+        "changes":  [
+                        "Close out audit Lows: key scrub, finding-URL edge, profile abort, lineage query dedupe"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 12:15",
+        "commit":  "1ead574",
+        "changes":  [
+                        "Production refresh schedule: prod nightly cron + local Task Scheduler"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:54",
+        "commit":  "1bfb8a7",
+        "changes":  [
+                        "Harden remaining sync paths: SAM atomicity/freshness, score reap, crosswalk edit preservation, real has_usa flag"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:41",
+        "commit":  "cee15db",
+        "changes":  [
+                        "Reference data: pull INACTIVE listings too; FAC-name fallback; console ts"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:33",
+        "commit":  "e1d5978",
+        "changes":  [
+                        "FAC incremental: 7-day overlap on --since; concurrency lock on sync_fac"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:30",
+        "commit":  "79fd36e",
+        "changes":  [
+                        "Update Data console: truthful counts, sync locks, subaward delta runs"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:18",
+        "commit":  "9e163d8",
+        "changes":  [
+                        "Subawards: capture business types, vendor country, exec comp (SAM-only)"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 11:05",
+        "commit":  "5ce30e2",
+        "changes":  [
+                        "Add SAM assistance-subaward (FSRS) sync - the missing pass-through leg"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:45",
+        "commit":  "c6fc768",
+        "changes":  [
+                        "sync_usa: fix loan-group 400 (root cause of 2.8% coverage), categories, truncation flag"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:28",
+        "commit":  "f16b4bf",
+        "changes":  [
+                        "deploy.ps1: run the migration loop from a file, not inline ssh"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:25",
+        "commit":  "c8960aa",
+        "changes":  [
+                        "Harden local admin surface: POST-only run, Origin checks, pinned CORS"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:25",
+        "commit":  "12e31c9",
+        "changes":  [
+                        "Migration ledger + runner; -RefreshData orphan cleanup"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:15",
+        "commit":  "b3ff6f3",
+        "changes":  [
+                        "Store all DB timestamps as UTC; fix README route list"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 10:14",
+        "commit":  "ac47a9b",
+        "changes":  [
+                        "Level 4 per-finding; one deadline helper; count gap-year delinquency"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 08:52",
+        "commit":  "e0a0d71",
+        "changes":  [
+                        "Crosswalk: surface save failures instead of blanking the UEI cell"
+                    ]
+    },
+    {
+        "date":  "2026-06-10 08:52",
+        "commit":  "c83f4cc",
+        "changes":  [
+                        "Exclude superseded resubmissions from rollups; guard --only=findings cascade"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 17:02",
+        "commit":  "02bba42",
+        "changes":  [
+                        "Add -RefreshData to deploy.ps1 (dump/upload/import prod data)"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 16:52",
+        "commit":  "cc8834c",
+        "changes":  [
+                        "Rewrite DEPLOY.md around deploy.ps1; drop WinSCP script"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 16:49",
+        "commit":  "a7708a7",
+        "changes":  [
+                        "Add one-command SSH deploy script + awards index migration"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 16:26",
+        "commit":  "154ac9a",
+        "changes":  [
+                        "Scroll to top on navigation"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 16:26",
+        "commit":  "2687d58",
+        "changes":  [
+                        "Speed up Search Recipients by agency (~14s -\u003e ~1s)"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 15:35",
+        "commit":  "1c0aa78",
+        "changes":  [
+                        "Surface GAAP audit opinion on the entity profile"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 15:01",
+        "commit":  "03f023a",
+        "changes":  [
+                        "Add AERO favicon (navy A monogram, brand #0f2a5e)"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 14:58",
+        "commit":  "ac366b2",
+        "changes":  [
+                        "Hide not-ready admin/Dashboard UI in prod builds; add deploy docs"
+                    ]
+    },
+    {
+        "date":  "2026-06-08 12:15",
+        "commit":  "036877a",
+        "changes":  [
+                        "Harden API for prod: gate admin/write/cache-bust to local console"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:46",
+        "commit":  "e25eb98",
+        "changes":  [
+                        "Update Data: date sources from console run completion"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:43",
+        "commit":  "0aeb2a1",
+        "changes":  [
+                        "Update Data: live job completion status (running -\u003e done/failed)"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:38",
+        "commit":  "d0b3530",
+        "changes":  [
+                        "Update Data: confirm dialog on Run update buttons"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:32",
+        "commit":  "9ad76a3",
+        "changes":  [
+                        "Update Data: surface incomplete (partial) sync runs"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:24",
+        "commit":  "09352db",
+        "changes":  [
+                        "Update Data: FAC gap check + recoverable (--safe) incremental sync"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 14:07",
+        "commit":  "d84ad17",
+        "changes":  [
+                        "Update Data: safe incremental FAC update + gated full re-sync + chaining"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 13:15",
+        "commit":  "4c3e298",
+        "changes":  [
+                        "Settings: build out Update Data console covering all tables"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 13:03",
+        "commit":  "06d84dd",
+        "changes":  [
+                        "Remove Findings Overview page and its routes"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 12:53",
+        "commit":  "5c2db82",
+        "changes":  [
+                        "Dashboard: Minimal+/Moderate+ posture toggle + HHS-only scope"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 12:43",
+        "commit":  "9ca94cc",
+        "changes":  [
+                        "Dashboard: add Risk Posture header (index, high-risk expenditures, tier-distribution bar)"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 12:37",
+        "commit":  "7de51fd",
+        "changes":  [
+                        "Add national Portfolio Dashboard"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 12:26",
+        "commit":  "ac00783",
+        "changes":  [
+                        "Remove Subrecipients and Pass-through tabs"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 12:13",
+        "commit":  "30c9ea5",
+        "changes":  [
+                        "Add Subrecipients + Pass-through tabs; all-agency footprint; eval drill tables, cross-tab nav, URL tabs"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 09:59",
+        "commit":  "2aa1cc4",
+        "changes":  [
+                        "QC tab: show stated QC value, stack/clean breakdowns, fix HHS-only sub-agency"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 09:43",
+        "commit":  "22314a2",
+        "changes":  [
+                        "QC tab: flag findings without an extracted amount; split into two tables"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 09:17",
+        "commit":  "ca2a505",
+        "changes":  [
+                        "QC analysis tab, Evaluation overhaul, parser v7 inline QC fallback"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 07:41",
+        "commit":  "992db6e",
+        "changes":  [
+                        "Relabel compliance type P as \u0027Other / uncategorized\u0027"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 07:35",
+        "commit":  "f0b11e6",
+        "changes":  [
+                        "parse_findings v6: recognize Grantee\u0027s/Recipient\u0027s Response"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 07:28",
+        "commit":  "a6e82f2",
+        "changes":  [
+                        "Finding Detail: add Auditee Corrective Action Plan section"
+                    ]
+    },
+    {
+        "date":  "2026-06-06 07:23",
+        "commit":  "eb87eda",
+        "changes":  [
+                        "Entity Info + Findings tabs, Finding Detail screen, parser hardening"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 23:25",
+        "commit":  "c0216e8",
+        "changes":  [
+                        "Rebuild Entity Profile: gauge, header, Risk/Audits/Awards tabs, footprint"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:42",
+        "commit":  "919114b",
+        "changes":  [
+                        "Entity Profile: clean up Overview + HHS footprint table"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:34",
+        "commit":  "ca7dbd2",
+        "changes":  [
+                        "Make Delinquent audits card match Evaluation Level 1"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:30",
+        "commit":  "1db57ac",
+        "changes":  [
+                        "Attention cards: add Modified opinions, switch Late filings to Delinquent audits"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:28",
+        "commit":  "3b462ce",
+        "changes":  [
+                        "What Needs Attention: latest-year finding counts, not all-years sum"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:24",
+        "commit":  "787c26c",
+        "changes":  [
+                        "Entity Profile: redesign risk gauge; swap score trend for findings-by-type trend"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 22:07",
+        "commit":  "d788ded",
+        "changes":  [
+                        "Split bottom risk tier: add Clean (score 0) below Minimal"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 21:58",
+        "commit":  "98c2746",
+        "changes":  [
+                        "Fix QC resolution: likely-only basis, undetermined != zero (parser v3)"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 21:49",
+        "commit":  "36cb16a",
+        "changes":  [
+                        "Score Component 3 with questioned-cost dollar magnitude"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 21:33",
+        "commit":  "b629e5d",
+        "changes":  [
+                        "Overview/methodology page, nav restyle, settings tabs, agency toggle, recipient search overhaul"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 21:32",
+        "commit":  "6b70d4e",
+        "changes":  [
+                        "Add finding-text extraction into fac_finding_extract"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 19:12",
+        "commit":  "4109844",
+        "changes":  [
+                        "Add Overview nav item with AERO description + score logic"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 16:27",
+        "commit":  "deb5f87",
+        "changes":  [
+                        "Add recipient-centric UI: search, entity profile, crosswalk, evaluation"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 14:55",
+        "commit":  "e0e14c4",
+        "changes":  [
+                        "Refine subrecipient monitoring: lineage-based persistence"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 14:38",
+        "commit":  "1e1618f",
+        "changes":  [
+                        "Refine cash/financial: lineage-based persistence + drop dead branch"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 14:31",
+        "commit":  "3b656d2",
+        "changes":  [
+                        "Refine reporting-timeliness: original-submission date + month-end deadline"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 14:16",
+        "commit":  "1ff7147",
+        "changes":  [
+                        "Refine internal-control scoring: graduated MW base + lineage-aware persistence"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 14:03",
+        "commit":  "8f8da7d",
+        "changes":  [
+                        "Add AERO risk score; speed up dashboard; harden API; scope to 2022–present"
+                    ]
+    },
+    {
+        "date":  "2026-06-05 07:55",
+        "commit":  "598e0bf",
+        "changes":  [
+                        "Speed up the agency filter (13s -\u003e 0.5s)"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 20:51",
+        "commit":  "f158652",
+        "changes":  [
+                        "Make the dashboard fast (7s -\u003e ~1s) and fix a load flicker"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 20:03",
+        "commit":  "9fcd6fb",
+        "changes":  [
+                        "Gentle USAspending sync pacing to avoid throttling"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 20:00",
+        "commit":  "be5e706",
+        "changes":  [
+                        "Add Hostinger deployment artifacts + refresh README"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:58",
+        "commit":  "d7fe4eb",
+        "changes":  [
+                        "Add incremental --since FAC sync + HTTP retry/backoff"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:51",
+        "commit":  "461e471",
+        "changes":  [
+                        "Add grantee profile (cross-source drill-in)"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:44",
+        "commit":  "3f3bdef",
+        "changes":  [
+                        "Add React/Vite Findings Overview dashboard"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:40",
+        "commit":  "54468d2",
+        "changes":  [
+                        "Add PHP API: filters, findings/summary, findings/list"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:15",
+        "commit":  "4f477e4",
+        "changes":  [
+                        "Add USAspending per-UEI sync (usa_award / usa_award_cfda / usa_recipient)"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 19:02",
+        "commit":  "0848e47",
+        "changes":  [
+                        "Source sam_entity from official SAM extract; remove sage entirely"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 15:15",
+        "commit":  "08abc8c",
+        "changes":  [
+                        "Fix split-narrative data loss in findings_text + corrective_action_plans"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 14:59",
+        "commit":  "27d9aef",
+        "changes":  [
+                        "Seed from official sources (FAC CSV extracts, SAM extracts, reference APIs)"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 13:45",
+        "commit":  "3a4e5b7",
+        "changes":  [
+                        "Add SQLite seed path (--source=sqlite) for fast FAC + SAM bulk load"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 11:36",
+        "commit":  "01284f2",
+        "changes":  [
+                        "Add FAC sync (PHP CLI) + fix findings many-to-many grain"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 11:05",
+        "commit":  "28ef339",
+        "changes":  [
+                        "Enrich USAspending model to full fidelity"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 10:56",
+        "commit":  "3233149",
+        "changes":  [
+                        "Expand SAM.gov coverage: exclusions, subawards, reference dimensions"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 10:34",
+        "commit":  "d29d3b7",
+        "changes":  [
+                        "Add fac_resubmission table for full FAC endpoint coverage"
+                    ]
+    },
+    {
+        "date":  "2026-06-04 10:22",
+        "commit":  "cb183d0",
+        "changes":  [
+                        "Add AERO data model: schema, env scaffolding, README"
+                    ]
+    }
+]

@@ -43,7 +43,7 @@ jobs:
           lftp -c "
             set sftp:auto-confirm yes;
             open -u '$SFTP_USER','$SFTP_PASS' -p $SFTP_PORT sftp://$SFTP_HOST;
-            mirror --verbose --delete --parallel=4 '$REMOTE_DIR' './$LOCAL_DIR';
+            mirror --verbose --delete --parallel=4 --exclude 'csv/sam/' '$REMOTE_DIR' './$LOCAL_DIR';
           "
 
       - name: Commit and push any changes

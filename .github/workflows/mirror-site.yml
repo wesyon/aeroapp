@@ -20,7 +20,7 @@ jobs:
       # For your main domain this is usually "public_html".
       # If aero.online is an addon domain, it may be something like
       # "domains/aero.online/public_html" — adjust if needed.
-      REMOTE_DIR: "public_html"
+      REMOTE_DIR: "domains/aero.online/public_html"
       # The folder in THIS repo where the mirrored files land.
       # Keeping them in a subfolder protects your README and this workflow.
       LOCAL_DIR: "site"

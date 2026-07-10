@@ -16,6 +16,7 @@ $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
+require $root . '/lib/RunLog.php';
 Env::load(dirname($root, 2) . '/.env');   // above web root (prod; first-set wins)
 Env::load(dirname($root) . '/.env');      // repo root (local dev)
 
@@ -55,6 +56,7 @@ $base = rtrim(Env::get('SAM_BASE_URL', 'https://api.sam.gov'), '/');
 // --- federal_agency (Federal Hierarchy) -------------------------------------
 if ($only !== 'listings') {
     $off = 0; $lim = 200; $n = 0;
+    $logIdA = RunLog::start($pdo, 'reference', 'agencies', 'federal_agency');
     while (true) {
         $d = api_get("$base/prod/federalorganizations/v1/orgs?api_key=$key&limit=$lim&offset=$off");
         $list = $d['orglist'] ?? [];
@@ -80,6 +82,7 @@ if ($only !== 'listings') {
         $off += count($list);
         if (count($list) < $lim) break;
     }
+    RunLog::finish($pdo, $logIdA, 'reference', 'agencies', 'federal_agency', 'ok', $n, "$n federal agencies");
     echo "  federal_agency      $n orgs\n";
 }
 
@@ -90,6 +93,7 @@ if ($only !== 'listings') {
 // and drop out of the catalog-joined footprint breakdowns.
 if ($only !== 'agencies') {
     $n = 0; $skip = 0;
+    $logIdL = RunLog::start($pdo, 'reference', 'listings', 'assistance_listing');
     foreach (['Active', 'Inactive'] as $status) {
     $page = 1;
     while (true) {
@@ -134,6 +138,7 @@ if ($only !== 'agencies') {
         $page++;
     }
     }
+    RunLog::finish($pdo, $logIdL, 'reference', 'listings', 'assistance_listing', 'ok', $n, "$n programs (active + inactive)" . ($skip ? " ($skip skipped)" : ""));
     echo "  assistance_listing  $n programs (active + inactive)" . ($skip ? " ($skip skipped: no ALN id)" : "") . "\n";
 }
 

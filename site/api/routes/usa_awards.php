@@ -23,6 +23,56 @@ if ($uei === null || !preg_match('/^[A-Za-z0-9]{12}$/', $uei)) {
     json_out(['error' => 'a valid 12-char uei is required'], 400);
 }
 
+// ON-DEMAND outlay load. A user on the USAspending tab can trigger a live per-entity File C /funding/
+// pull (sync_usa_outlays.php --uei --related) that fills usa_award_outlay_month for this entity + its
+// rollup members — exact MONTHLY outlays — then poll ?action=outlay_status until 'done'. It's the lazy,
+// gentle alternative to the bulk backfill: one entity is a handful of calls, and it caches so the next
+// viewer is instant. Local-only for now (it's a write + shell-out; enabling on prod is a separate call).
+$action = q_str('action');
+if ($action === 'outlay_status' || $action === 'load_outlays') {
+    $statusFile = dirname(__DIR__) . '/cache/outlay_' . $uei . '.status';
+    $status = is_file($statusFile) ? trim((string) file_get_contents($statusFile)) : 'idle';
+    if ($action === 'outlay_status') json_out(['uei' => $uei, 'status' => $status]);
+
+    // load_outlays: POST + local only, and don't relaunch one that's already in flight.
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') json_out(['error' => 'POST required'], 405);
+    if (!is_local_request()) json_out(['error' => 'on-demand outlay load is available only from the local install'], 403);
+    if ($status === 'running') json_out(['started' => true, 'uei' => $uei, 'status' => 'running']);
+
+    // Guard: on-demand is for typical entities (seconds-to-minutes). A big rollup (a state govt =
+    // tens of thousands of awards) would crawl for HOURS and re-trip the API throttle — those get
+    // primed offline/by the bulk matrix instead, not by a click.
+    $ONDEMAND_CAP = 1500;
+    $cnt = $pdo->prepare(
+        "SELECT COUNT(*) FROM usa_award a
+         WHERE a.category <> 'loan' AND a.total_outlay IS NOT NULL AND a.total_outlay <> 0
+           AND (a.recipient_uei = ? OR a.recipient_uei IN (SELECT additional_uei FROM fac_additional_ueis WHERE auditee_uei = ?))"
+    );
+    $cnt->execute([$uei, $uei]);
+    $awardCount = (int) $cnt->fetchColumn();
+    if ($awardCount > $ONDEMAND_CAP) {
+        json_out(['error' => 'too_large', 'uei' => $uei, 'awards' => $awardCount,
+                  'message' => "This entity has $awardCount awards — too large to pull on demand; its outlays are prepared in the background instead."], 409);
+    }
+
+    $php = getenv('PHP_CLI') ?: (defined('PHP_BINARY') ? PHP_BINARY : 'php');
+    $win = fn ($p) => str_replace('/', '\\', $p);
+    $cacheDir = dirname(__DIR__) . '/cache';
+    $logFile = $cacheDir . '/outlay_' . $uei . '.log';
+    $bat = $cacheDir . '/outlay_' . $uei . '.bat';
+    $cmd = '"' . $win($php) . '" "' . $win(dirname(__DIR__) . '/sync/sync_usa_outlays.php') . '" --uei=' . $uei . ' --related';
+    file_put_contents(
+        $bat,
+        "@echo off\r\n"
+        . 'echo running>"' . $win($statusFile) . '"' . "\r\n"
+        . '( ' . $cmd . ' ) > "' . $win($logFile) . '" 2>&1' . "\r\n"
+        . 'if "%errorlevel%"=="0" (echo done>"' . $win($statusFile) . '") else (echo failed>"' . $win($statusFile) . '")' . "\r\n"
+    );
+    @file_put_contents($statusFile, 'running');
+    @pclose(@popen('cmd /c start "" /B cmd /c ' . escapeshellarg($win($bat)), 'r'));
+    json_out(['started' => true, 'uei' => $uei, 'status' => 'running']);
+}
+
 // Multi-UEI governments: expand to the whole crosswalk group so awards filed under former
 // UEIs are included (mirrors grantee.php / subaward.php).
 $ueiSet = [$uei];
@@ -34,13 +84,16 @@ if (($grpUeis = $grpStmt->fetchColumn()) !== false && $grpUeis !== null) {
 }
 $selfIN = implode(',', array_fill(0, count($ueiSet), '?'));
 
-// Affiliated component entities (rollup membership) — distinct additional UEIs this auditee
-// reported on its Single Audit, excluding the entity's own UEI(s). Same source as the
-// Entity Info "Related UEIs" card, so the two surfaces stay consistent.
+// Affiliated component entities (rollup membership) — additional UEIs this auditee reported
+// on its Single Audit UNION curated component links (entity_related_uei — agencies named in
+// the parent's own SEFA but never declared on its SF-SAC, e.g. Oklahoma). Same sources as
+// the Entity Info "Related UEIs" card, so the two surfaces stay consistent.
 $memStmt = $pdo->prepare(
-    "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfIN)"
+    "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfIN)
+     UNION
+     SELECT DISTINCT related_uei FROM entity_related_uei WHERE uei IN ($selfIN)"
 );
-$memStmt->execute($ueiSet);
+$memStmt->execute(array_merge($ueiSet, $ueiSet));
 $members = array_values(array_filter(
     $memStmt->fetchAll(PDO::FETCH_COLUMN),
     fn ($u) => $u !== null && $u !== '' && !in_array($u, $ueiSet, true)
@@ -147,18 +200,67 @@ try {
 } catch (\PDOException $e) {
     error_log('usa_awards: txn-month split unavailable: ' . $e->getMessage());
 }
-// CFDA titles (usa_award_cfda is local-only; degrade to ALN-only where absent)
+
+// Per-award OUTLAY months (File C, calendar-month deltas). Twin of $monthsByAward but for outlays,
+// so the UI can split outlays across fiscal years exactly like obligations. Wrapped: a deployment
+// without usa_award_outlay_month degrades to the award-lifetime total_outlay (still returned below).
+$outlaysByAward = [];
+try {
+    $oStmt = $pdo->prepare(
+        "SELECT m.award_id, DATE_FORMAT(m.ym, '%Y-%m') ym, m.outlay
+         FROM usa_award_outlay_month m JOIN usa_award a ON a.award_id = m.award_id
+         WHERE a.recipient_uei IN ($IN)"
+    );
+    $oStmt->execute($qset);
+    foreach ($oStmt as $r) $outlaysByAward[$r['award_id']][] = [$r['ym'], (float) $r['outlay']];
+} catch (\PDOException $e) {
+    error_log('usa_awards: outlay-month split unavailable: ' . $e->getMessage());
+}
+
+// Program titles from assistance_listing — the app-wide federal program catalog (ALN -> name),
+// the same reference the FAC views (findings/grantee/subaward/evaluation) already use. Previously
+// read usa_award_cfda, which is LOCAL-ONLY, so ALNs showed as bare numbers on prod. Look up only
+// the ALNs present in this view (small IN list) rather than scanning the whole catalog.
 if ($programMonths) {
+    $alns = array_keys($programMonths);
+    $ph   = implode(',', array_fill(0, count($alns), '?'));
     try {
-        foreach ($pdo->query("SELECT cfda_number, MAX(cfda_title) cfda_title FROM usa_award_cfda WHERE cfda_title IS NOT NULL GROUP BY cfda_number") as $r) {
-            $cfdaTitles[$r['cfda_number']] = $r['cfda_title'];
-        }
+        $tStmt = $pdo->prepare("SELECT assistance_listing_id, title FROM assistance_listing WHERE assistance_listing_id IN ($ph) AND title IS NOT NULL");
+        $tStmt->execute($alns);
+        foreach ($tStmt as $r) $cfdaTitles[$r['assistance_listing_id']] = $r['title'];
     } catch (\PDOException $e) { /* titles optional */ }
 }
 $programOut = [];
 foreach ($programMonths as $cfda => $mos) {
     $programOut[] = ['aln' => $cfda, 'title' => $cfdaTitles[$cfda] ?? null, 'months' => $mos];
 }
+
+// Audited SEFA expenditures per (ALN, audit year) — what the entity itself reported SPENDING in its
+// Single Audit (fac_federal_awards.amount_expended), for the Comparative obligated-vs-expended view.
+// audit_year IS the entity fiscal year, so this only lines up under the Entity-FY basis. is_active
+// dedups resubmissions. Same UEI set as the awards so both sides cover the same rollup group.
+// Entities in this view whose award crawl hit the per-recipient page cap (sync_truncated=1):
+// their award lists — and therefore every total on the tab — are a FLOOR, not the full picture
+// (largest awards kept, long tail not loaded). Surfaced so big rollups don't silently understate.
+$truncated = 0;
+try {
+    $trStmt = $pdo->prepare("SELECT COUNT(*) FROM usa_recipient WHERE uei IN ($IN) AND sync_truncated = 1");
+    $trStmt->execute($qset);
+    $truncated = (int) $trStmt->fetchColumn();
+} catch (\PDOException $e) { /* column absent on an old schema — hint just doesn't render */ }
+
+$sefa = [];   // aln => { audit_year => amount_expended }
+try {
+    $sStmt = $pdo->prepare(
+        "SELECT fa.aln, fa.audit_year, SUM(fa.amount_expended) exp
+         FROM fac_federal_awards fa
+         JOIN fac_general g ON g.report_id = fa.report_id AND g.is_active = 1
+         WHERE fa.auditee_uei IN ($IN) AND fa.aln IS NOT NULL AND fa.amount_expended IS NOT NULL
+         GROUP BY fa.aln, fa.audit_year"
+    );
+    $sStmt->execute($qset);
+    foreach ($sStmt as $r) $sefa[$r['aln']][(int) $r['audit_year']] = (float) $r['exp'];
+} catch (\PDOException $e) { /* SEFA optional — tab degrades to obligations-only */ }
 
 $rowStmt->execute($qset);
 $rows = [];
@@ -169,7 +271,9 @@ foreach ($rowStmt as $r) {
         'fy'              => $r['fy'] !== null ? (int) $r['fy'] : null,   // federal FY of base obligation (fallback)
         'obligated_on'    => $r['obligated_on'],
         'months'          => $monthsByAward[$r['award_id']] ?? null,      // [[YYYY-MM, obligation], …] action-date split
+        'outlay_months'   => $outlaysByAward[$r['award_id']] ?? null,     // [[YYYY-MM, outlay], …] File C calendar-month split
         'award_ref'       => $r['award_ref'],
+        'award_id'        => $r['award_id'],   // generated_internal_id — links to usaspending.gov/award/{id}
         'category'        => $r['category'],
         'award_type'      => $r['award_type_description'],
         'agency'          => $r['awarding_toptier_agency'],
@@ -197,7 +301,10 @@ json_out([
     'capped'      => (int) ($agg['n'] ?? 0) > count($rows),
     'fye_month'   => $fyeMonth,                            // entity FYE month for the Auditee-FY basis
     'txn_available' => count($monthsByAward) > 0,          // action-date FY split present for this view
+    'outlay_available' => count($outlaysByAward) > 0,      // File C calendar-month outlay split present for this view
     'program_months' => $programOut,                       // [{aln, title, months:[[YYYY-MM, obligation],…]}] for Comparative
+    'sefa'        => $sefa ?: null,                        // aln => {audit_year: amount_expended} — audited SEFA spend
+    'truncated_entities' => $truncated,                    // recipients whose award list hit the sync cap (totals = floor)
     'rows'        => $rows,
     // Rollup metadata — drives the "include N affiliated entities" toggle + coverage hint.
     'rollup' => [

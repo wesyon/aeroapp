@@ -23,6 +23,7 @@ $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
+require $root . '/lib/RunLog.php';
 Env::load(dirname($root, 2) . '/.env');
 Env::load(dirname($root) . '/.env');
 
@@ -76,9 +77,12 @@ if (isset($args['uei'])) {
         foreach (preg_split('/\R+/', (string) $gu) ?: [] as $u) { if (($u = trim($u)) !== '') $set[] = $u; }
     }
     $self = array_values(array_unique($set));
-    $m = $pdo->prepare("SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ("
-        . implode(',', array_fill(0, count($self), '?')) . ")");
-    $m->execute($self);
+    $selfPh = implode(',', array_fill(0, count($self), '?'));
+    $m = $pdo->prepare(
+        "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfPh)
+         UNION
+         SELECT DISTINCT related_uei FROM entity_related_uei WHERE uei IN ($selfPh)");
+    $m->execute(array_merge($self, $self));
     foreach ($m->fetchAll(PDO::FETCH_COLUMN) as $u) { if ($u !== null && $u !== '') $set[] = $u; }
     $ueis = array_values(array_unique(array_filter($set)));
 } elseif (isset($args['oldest'])) {
@@ -96,6 +100,10 @@ if (isset($args['uei'])) {
     $where = $args['where'] ?? 'findings';
     $sql = match ($where) {
         'all'           => "SELECT DISTINCT recipient_uei FROM usa_award WHERE recipient_uei IS NOT NULL",
+        // recipients that HAVE awards but NO transaction-month rows yet — the exact backfill gap that
+        // leaves the Comparative-by-Program view empty. Resumable: each completed recipient drops out.
+        'missing'       => "SELECT a.recipient_uei FROM (SELECT DISTINCT recipient_uei FROM usa_award WHERE recipient_uei IS NOT NULL) a "
+                         . "WHERE NOT EXISTS (SELECT 1 FROM usa_award_txn_month m JOIN usa_award x ON x.award_id = m.award_id WHERE x.recipient_uei = a.recipient_uei)",
         // rollup component agencies (see sync_usa.php) — sync their transaction months once their
         // awards exist; 'members' = all, 'state-members' = just state parents'.
         'members'       => "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE additional_uei IS NOT NULL AND additional_uei <> ''",
@@ -110,6 +118,7 @@ if (isset($args['uei'])) {
 
 $total = count($ueis); $done = 0; $months = 0; $started = time();
 echo "USAspending transaction sync: $total recipients (action_date >= $since)\n";
+$logId = RunLog::start($pdo, 'usaspending', 'txn_months', 'usa_award_txn_month');   // best-effort; finalized below
 
 $delMonths = $pdo->prepare(
     "DELETE m FROM usa_award_txn_month m JOIN usa_award a ON a.award_id = m.award_id WHERE a.recipient_uei = ?"
@@ -181,6 +190,8 @@ foreach ($ueis as $uei) {
     }
     if (++$done % 100 === 0) {
         printf("  %d/%d recipients, %d award-months (%.1f rec/s)\n", $done, $total, $months, $done / max(1, time() - $started));
+        RunLog::progress($pdo, $logId, $months, "$done/$total recipients · $months award-months");
     }
 }
+RunLog::finish($pdo, $logId, 'usaspending', 'txn_months', 'usa_award_txn_month', 'ok', $months, "$done/$total recipients processed · $months award-months loaded");
 printf("Done. %d recipients, %d award-months loaded.\n", $done, $months);

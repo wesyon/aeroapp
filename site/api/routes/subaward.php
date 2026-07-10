@@ -32,11 +32,29 @@ if (($grpUeis = $grpStmt->fetchColumn()) !== false && $grpUeis !== null) {
     $set = array_values(array_filter(array_map('trim', preg_split('/[\s,]+/', (string) $grpUeis) ?: [])));
     if (count($set) > 1 && in_array($uei, $set, true)) $ueiSet = $set;
 }
+
+// Rollup family — additional UEIs declared on this auditee's SF-SAC UNION curated component
+// links (entity_related_uei). Component agencies report FSRS subawards under their OWN UEIs
+// (e.g. PennDOT under the Commonwealth of PA), so without this the parent profile shows $0
+// passed down. Same sources as the Entity Info "Related UEIs" card and the USAspending tab
+// (usa_awards.php), so the money surfaces stay consistent.
+$selfIN = implode(',', array_fill(0, count($ueiSet), '?'));
+$memStmt = $pdo->prepare(
+    "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfIN)
+     UNION
+     SELECT DISTINCT related_uei FROM entity_related_uei WHERE uei IN ($selfIN)"
+);
+$memStmt->execute(array_merge($ueiSet, $ueiSet));
+foreach ($memStmt->fetchAll(PDO::FETCH_COLUMN) as $m) {
+    $m = strtoupper(trim((string) $m));
+    if (preg_match('/^[A-Z0-9]{12}$/', $m) && !in_array($m, $ueiSet, true)) $ueiSet[] = $m;
+}
 $IN = implode(',', array_fill(0, count($ueiSet), '?'));
 
 const SUBAWARD_ROW_LIMIT = 500;   // default rows per direction; totals are computed over all
 // "?all=1" lifts the default cap (the UI's "Show all" button). Still bounded so a
-// pathological prime can't return an unbounded payload; real max is ~1,200 partners.
+// pathological prime can't return an unbounded payload; the largest real families
+// (state governments rolled up across their agency UEIs) run a few thousand partners.
 $rowLimit = q_str('all') === '1' ? 100000 : SUBAWARD_ROW_LIMIT;
 
 // Optional year filter (the Passthrough "Filters" section). When set, totals + rows are
@@ -63,7 +81,10 @@ $aeroEtype = fn (?string $t): array => match ($t) {
 $direction = function (string $selfCol, string $otherCol) use ($pdo, $ueiSet, $IN, $rowLimit, $year, $hasType, $aeroEtype): array {
     $yc  = $year !== null ? ' AND year = ?'   : '';   // plain-table (totals)
     $yce = $year !== null ? ' AND e.year = ?' : '';   // aliased (rows)
-    $params = $year !== null ? array_merge($ueiSet, [$year]) : $ueiSet;
+    // Counterparties INSIDE the family set are excluded: after the rollup expansion an
+    // intra-family subaward (one PA agency funding another) would otherwise show the
+    // entity paying itself on both directions.
+    $params = $year !== null ? array_merge($ueiSet, $ueiSet, [$year]) : array_merge($ueiSet, $ueiSet);
     $btJoin = $hasType ? "LEFT JOIN subaward_entity_type bt ON bt.uei = e.$otherCol" : '';
     $btSel  = $hasType ? 'MAX(bt.entity_type) bt_type, MAX(bt.audit_applicable) bt_audit,' : 'NULL bt_type, NULL bt_audit,';
 
@@ -71,7 +92,7 @@ $direction = function (string $selfCol, string $otherCol) use ($pdo, $ueiSet, $I
     $tot = $pdo->prepare(
         "SELECT COUNT(DISTINCT $otherCol) partners, COALESCE(SUM(subawards),0) subawards,
                 COALESCE(SUM(total_amount),0) total
-         FROM subaward_edge WHERE $selfCol IN ($IN)$yc"
+         FROM subaward_edge WHERE $selfCol IN ($IN) AND $otherCol NOT IN ($IN)$yc"
     );
     $tot->execute($params);
     $totals = $tot->fetch(PDO::FETCH_ASSOC) ?: ['partners' => 0, 'subawards' => 0, 'total' => 0];
@@ -89,7 +110,7 @@ $direction = function (string $selfCol, string $otherCol) use ($pdo, $ueiSet, $I
          FROM subaward_edge e
          LEFT JOIN entity a ON a.uei = e.$otherCol   -- the recipient directory (identity + in_hub); was aero_score
          $btJoin
-         WHERE e.$selfCol IN ($IN)$yce
+         WHERE e.$selfCol IN ($IN) AND e.$otherCol NOT IN ($IN)$yce
          GROUP BY e.$otherCol
          ORDER BY total DESC
          LIMIT " . (int) $rowLimit
@@ -139,11 +160,11 @@ $received = $direction('sub_vendor_uei', 'prime_entity_uei');
 // the FULL list regardless of the active year filter, so the dropdown never collapses.
 $yStmt = $pdo->prepare(
     "SELECT DISTINCT year FROM (
-        SELECT year FROM subaward_edge WHERE prime_entity_uei IN ($IN)
-        UNION ALL SELECT year FROM subaward_edge WHERE sub_vendor_uei IN ($IN)
+        SELECT year FROM subaward_edge WHERE prime_entity_uei IN ($IN) AND sub_vendor_uei NOT IN ($IN)
+        UNION ALL SELECT year FROM subaward_edge WHERE sub_vendor_uei IN ($IN) AND prime_entity_uei NOT IN ($IN)
      ) y ORDER BY year DESC"
 );
-$yStmt->execute(array_merge($ueiSet, $ueiSet));
+$yStmt->execute(array_merge($ueiSet, $ueiSet, $ueiSet, $ueiSet));
 $years = array_map('intval', $yStmt->fetchAll(PDO::FETCH_COLUMN));
 
 // Enrich ALN codes -> program titles in one catalog lookup for all rows (both directions),

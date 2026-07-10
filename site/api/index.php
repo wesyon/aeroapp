@@ -193,15 +193,20 @@ $handlers = [
     'filters'          => __DIR__ . '/routes/filters.php',
     'grantee'          => __DIR__ . '/routes/grantee.php',
     'finding'          => __DIR__ . '/routes/finding.php',
+    'finding_trends'   => __DIR__ . '/routes/finding_trends.php',
+    'passthrough'      => __DIR__ . '/routes/passthrough.php',
     'dashboard'        => __DIR__ . '/routes/dashboard.php',
     'evaluation'       => __DIR__ . '/routes/evaluation.php',
     'repeat'           => __DIR__ . '/routes/repeat.php',
     'deployments'      => __DIR__ . '/routes/deployments.php',
     'admin'            => __DIR__ . '/routes/admin.php',
     'recipients'       => __DIR__ . '/routes/recipients.php',
+    'geo_points'       => __DIR__ . '/routes/geo_points.php',
     'subaward'         => __DIR__ . '/routes/subaward.php',
     'usa_awards'       => __DIR__ . '/routes/usa_awards.php',
     'crosswalk'        => __DIR__ . '/routes/crosswalk.php',
+    'crosscheck'       => __DIR__ . '/routes/crosscheck.php',
+    'signals'          => __DIR__ . '/routes/signals.php',
 ];
 
 if (!isset($handlers[$route])) {

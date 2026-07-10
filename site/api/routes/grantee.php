@@ -15,11 +15,13 @@ if ($uei === null || !preg_match('/^[A-Za-z0-9]{12}$/', $uei)) {
 // linkage). $uei becomes the group's CURRENT member (latest active filing): SAM/score
 // lookups and links use it; every FAC query below scopes to the full set.
 $ueiSet = [$uei];
+$isStateGov = false;   // uei is a state_uei registry member → this profile IS a state government
 $grpStmt = $pdo->prepare("SELECT ueis FROM state_uei WHERE ueis LIKE ?");
 $grpStmt->execute(['%' . $uei . '%']);
 if (($grpUeis = $grpStmt->fetchColumn()) !== false && $grpUeis !== null) {
     $set = array_values(array_filter(array_map('trim', preg_split('/\R+/', (string) $grpUeis) ?: [])));
-    if (count($set) > 1 && in_array($uei, $set, true)) $ueiSet = $set;
+    $isStateGov = in_array($uei, $set, true);
+    if (count($set) > 1 && $isStateGov) $ueiSet = $set;
 }
 $IN = implode(',', array_fill(0, count($ueiSet), '?'));
 if (count($ueiSet) > 1) {
@@ -48,6 +50,7 @@ $cognizantCode = $identity['cognizant_agency'] ?? null;
 unset($identity['total_amount_expended'], $identity['cognizant_agency']);
 $identity['uei'] = $uei;                                            // the current member
 $identity['former_ueis'] = array_values(array_diff($ueiSet, [$uei]));
+$identity['is_stategov'] = $isStateGov;                             // registry member → State Govt scope
 
 // Additional UEIs this auditee reported alongside its filing UEI(s) (fac_additional_ueis)
 // — sister/component registrations of the SAME entity. Surfaced in Entity Info so a user
@@ -73,9 +76,85 @@ foreach ($addStmt as $r) {
         'last_year'  => (int) $r['last_year'],
         'name'       => $r['name'],
         'reg_status' => $r['reg_status'],
+        'src'        => 'fac',                                      // auditor-reported on the SF-SAC
     ];
 }
+
+// Curated component links (entity_related_uei) — agencies that belong to this reporting
+// entity per its own audit's SEFA but were never declared as additional UEIs on the SF-SAC
+// (e.g. Oklahoma FY2023). Tagged so the UI can distinguish auditor-reported from curated.
+$curStmt = $pdo->prepare(
+    "SELECT er.related_uei uei, er.note,
+            MAX(COALESCE(se.legal_business_name, ur.name)) name, MAX(se.registration_status) reg_status
+     FROM entity_related_uei er
+     LEFT JOIN sam_entity se    ON se.uei = er.related_uei
+     LEFT JOIN usa_recipient ur ON ur.uei = er.related_uei
+     WHERE er.uei IN ($IN)
+     GROUP BY er.related_uei, er.note"
+);
+$curStmt->execute($ueiSet);
+$seen = array_column($additionalUeis, 'uei');
+foreach ($curStmt as $r) {
+    if (in_array($r['uei'], $ueiSet, true) || in_array($r['uei'], $seen, true)) continue;
+    $additionalUeis[] = [
+        'uei'        => $r['uei'],
+        'last_year'  => null,
+        'name'       => $r['name'],
+        'reg_status' => $r['reg_status'],
+        'src'        => 'curated',
+        'note'       => $r['note'],
+    ];
+}
+
+// Members that file their OWN single audits (e.g. Oklahoma DOT/DEQ) — surfaced on the
+// Related UEIs card so self-filers read differently from components whose only audit
+// coverage is the parent's statewide report.
+if ($additionalUeis) {
+    $auIN = implode(',', array_fill(0, count($additionalUeis), '?'));
+    // Latest own filing per member, WITH its audit_type: a 'program-specific' audit covers
+    // one grant, not the entity (e.g. Oklahoma DOT's FY2024 filing = a $3.3M rail-grant
+    // audit against ~$1.1B/yr received) — the UI must not present it as full coverage.
+    $ownStmt = $pdo->prepare(
+        "SELECT auditee_uei, audit_year y, audit_type t FROM (
+            SELECT auditee_uei, audit_year, audit_type,
+                   ROW_NUMBER() OVER (PARTITION BY auditee_uei ORDER BY audit_year DESC) rn
+            FROM fac_general WHERE auditee_uei IN ($auIN)
+         ) x WHERE rn = 1"
+    );
+    $ownStmt->execute(array_column($additionalUeis, 'uei'));
+    $own = [];
+    foreach ($ownStmt as $r) $own[$r['auditee_uei']] = $r;
+    foreach ($additionalUeis as &$au) {
+        $au['own_year'] = isset($own[$au['uei']]) ? (int) $own[$au['uei']]['y'] : null;
+        $au['own_type'] = $own[$au['uei']]['t'] ?? null;
+    }
+    unset($au);
+}
 $identity['additional_ueis'] = $additionalUeis;
+
+// Reverse membership — parents whose reporting family THIS entity belongs to, from both
+// link sources (auditor-declared additional UEIs and curated component links). Lets a
+// component's own profile (e.g. Oklahoma DOT) point back at the government that answers
+// for it, mirroring the parent's Related UEIs card.
+$memberOf = [];
+$moStmt = $pdo->prepare(
+    "SELECT p.parent_uei, p.src, p.note,
+            COALESCE(e.display_name, p.parent_uei) name
+     FROM (
+        SELECT DISTINCT auditee_uei parent_uei, 'fac' src, NULL note
+        FROM fac_additional_ueis WHERE additional_uei IN ($IN)
+        UNION
+        SELECT uei parent_uei, 'curated' src, note
+        FROM entity_related_uei WHERE related_uei IN ($IN)
+     ) p
+     LEFT JOIN entity e ON e.uei = p.parent_uei"
+);
+$moStmt->execute(array_merge($ueiSet, $ueiSet));
+foreach ($moStmt as $r) {
+    if (in_array($r['parent_uei'], $ueiSet, true)) continue;
+    $memberOf[] = ['uei' => $r['parent_uei'], 'name' => $r['name'], 'src' => $r['src'], 'note' => $r['note']];
+}
+$identity['member_of'] = $memberOf;
 
 // SAM registration (multi-UEI: prefer the active registration — old members lapse)
 $samStmt = $pdo->prepare(

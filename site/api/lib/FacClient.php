@@ -1,18 +1,33 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/QuotaObs.php';
+
 /**
  * Federal Audit Clearinghouse PostgREST client.
  * Pages through a table for a given filter, invoking a callback per page so
  * large result sets are streamed rather than buffered in memory.
+ *
+ * FAC is behind api.data.gov, which returns X-RateLimit-Remaining on every response. When a
+ * $pdo is supplied, each response's rate-limit headers are recorded to api_quota_obs, so the
+ * Data Status quota indicator can show the API's OWN remaining count instead of an estimate.
  */
 final class FacClient
 {
     private string $base;
 
-    public function __construct(string $base, private string $apiKey)
+    public function __construct(string $base, private string $apiKey,
+                                private ?PDO $pdo = null, private string $quotaSource = 'fac')
     {
         $this->base = rtrim($base, '/');
+    }
+
+    /** Record the response's rate-limit headers as quota ground truth (no-op without a $pdo). */
+    private function noteRate(array $headers): void
+    {
+        if ($this->pdo !== null) {
+            QuotaObs::fromHeaders($this->pdo, $this->quotaSource, $headers);
+        }
     }
 
     /**
@@ -38,10 +53,11 @@ final class FacClient
         $total  = 0;
         while (true) {
             $url = "{$this->base}/{$table}?{$filter}&limit={$pageSize}&offset={$offset}";
-            [, , $rows] = Http::getJson($url, [
+            [, $headers, $rows] = Http::getJson($url, [
                 "X-Api-Key: {$this->apiKey}",
                 'Accept: application/json',
             ]);
+            $this->noteRate($headers);
             if (!is_array($rows) || count($rows) === 0) {
                 break;
             }
@@ -66,6 +82,7 @@ final class FacClient
         [, $headers, ] = Http::getJson($url, [
             "X-Api-Key: {$this->apiKey}", 'Accept: application/json', 'Prefer: count=exact',
         ]);
+        $this->noteRate($headers);
         // Content-Range: "0-0/12345" (or "*/12345")
         $cr = $headers['content-range'] ?? '';
         return preg_match('#/(\d+)\s*$#', $cr, $m) ? (int) $m[1] : null;
@@ -76,7 +93,8 @@ final class FacClient
     {
         $filter = 'audit_year=in.(' . implode(',', $years) . ')&select=report_id&order=fac_accepted_date.desc';
         $url    = "{$this->base}/general?{$filter}&limit={$limit}";
-        [, , $rows] = Http::getJson($url, ["X-Api-Key: {$this->apiKey}", 'Accept: application/json']);
+        [, $headers, $rows] = Http::getJson($url, ["X-Api-Key: {$this->apiKey}", 'Accept: application/json']);
+        $this->noteRate($headers);
         return array_values(array_filter(array_map(fn ($r) => $r['report_id'] ?? null, $rows ?: [])));
     }
 }

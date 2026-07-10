@@ -19,6 +19,7 @@ declare(strict_types=1);
  * Usage:
  *   php sync_sam_detail.php                # backfill all registered entities missing detail
  *   php sync_sam_detail.php --limit=2000   # cap this run (nightly chunk)
+ *   php sync_sam_detail.php --type=state   # prioritize a hub entity_type slice (comma-separated ok)
  *   php sync_sam_detail.php --uei=XXXXXXXXXXXX
  */
 
@@ -26,6 +27,8 @@ $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
+require $root . '/lib/RunLog.php';
+require $root . '/lib/QuotaObs.php';
 Env::load(dirname($root, 2) . '/.env');
 Env::load(dirname($root) . '/.env');
 
@@ -50,19 +53,40 @@ $limit  = isset($args['limit']) ? max(1, (int) $args['limit']) : null;
 if (isset($args['uei']) && preg_match('/^[A-Za-z0-9]{12}$/', (string) $args['uei'])) {
     $ueis = [strtoupper((string) $args['uei'])];
 } else {
-    $ueis = $pdo->query(
-        "SELECT uei FROM sam_entity
-         WHERE entity_structure IS NULL
-           AND COALESCE(registration_status,'') NOT IN ('ID Assigned','Not Found')
-         ORDER BY uei"
-    )->fetchAll(PDO::FETCH_COLUMN);
+    // Optional --type scopes the backfill to entity-hub entity_type(s) so a slice can go
+    // first (e.g. --type=state, or --type=state,local). Resumable within the slice too.
+    $join = $typeSql = ''; $params = [];
+    if (!empty($args['type']) && is_string($args['type'])) {
+        $types = array_values(array_filter(array_map('trim', explode(',', $args['type']))));
+        if ($types) {
+            $join    = " JOIN entity e ON e.uei = s.uei";
+            $typeSql = " AND e.entity_type IN (" . implode(',', array_fill(0, count($types), '?')) . ")";
+            $params  = $types;
+        }
+    }
+    $st = $pdo->prepare(
+        "SELECT s.uei FROM sam_entity s$join
+         WHERE s.entity_structure IS NULL
+           AND COALESCE(s.registration_status,'') NOT IN ('ID Assigned','Not Found')$typeSql
+         ORDER BY s.uei"
+    );
+    $st->execute($params);
+    $ueis = $st->fetchAll(PDO::FETCH_COLUMN);
 }
 if ($limit !== null) $ueis = array_slice($ueis, 0, $limit);
-if (!$ueis) { echo "Nothing to enrich: every registered entity already has SAM detail.\n"; exit(0); }
+if (!$ueis) {
+    echo "Nothing to enrich: every registered entity already has SAM detail.\n";
+    // Log a clean no-op so a fully-caught-up night keeps the Data Status timestamp fresh
+    // (rather than reading "stale" because there was simply nothing to do).
+    RunLog::finish($pdo, null, 'sam', 'detail', 'sam_entity', 'ok', 0, 'nothing to enrich — all registered entities already have detail');
+    exit(0);
+}
 printf("Enriching %d entities with SAM detail (structure / business types / NAICS)...\n", count($ueis));
 
-/** All entityData records for a UEI batch, with the detail sections, paged + paced. */
-function detail_fetch(string $base, string $key, array $ueis, int $paceUs): array
+/** All entityData records for a UEI batch, with the detail sections, paged + paced.
+ *  $reqs is incremented per HTTP call so we can report the ACTUAL SAM Entity API request
+ *  count (SAM sends no usage header — counting our own requests is the honest quota signal). */
+function detail_fetch(string $base, string $key, array $ueis, int $paceUs, int &$reqs): array
 {
     $out = [];
     for ($page = 0; ; $page++) {
@@ -72,6 +96,7 @@ function detail_fetch(string $base, string $key, array $ueis, int $paceUs): arra
             'size'            => 10, 'page' => $page,
         ]);
         [, , $d] = Http::getJson("$base/entity-information/v3/entities?api_key=$key&$q", ['Accept: application/json']);
+        $reqs++;
         foreach (($d['entityData'] ?? []) as $rec) $out[] = $rec;
         if (count($out) >= (int) ($d['totalRecords'] ?? 0) || !($d['entityData'] ?? [])) break;
         usleep($paceUs);
@@ -98,12 +123,13 @@ $ensure = function () use (&$pdo, &$st, $prep) {
 };
 
 $start = gmdate('Y-m-d H:i:s'); $t0 = microtime(true);
-$nEnt = 0; $nBt = 0; $nNz = 0;
+$nEnt = 0; $nBt = 0; $nNz = 0; $nReq = 0;   // $nReq = actual SAM Entity API calls (quota truth)
+$logId = RunLog::start($pdo, 'sam', 'detail', 'sam_entity');   // 'running' row; finalized below
 
 foreach (array_chunk($ueis, 50) as $bi => $batch) {
     for ($attempt = 1; ; $attempt++) {
         try {
-            $recs = detail_fetch($base, $key, $batch, $paceUs);
+            $recs = detail_fetch($base, $key, $batch, $paceUs, $nReq);
             $ensure();
             foreach ($recs as $rec) {
                 $uei = strtoupper((string) ($rec['entityRegistration']['ueiSAM'] ?? ''));
@@ -140,14 +166,16 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
             if (strpos($e->getMessage(), 'HTTP 429') !== false && $attempt <= 30) {
                 $nap = $attempt <= 2 ? 900 : 3600;
                 printf("  batch %d quota wall (attempt %d) - sleeping %d min... [%s]\n", $bi + 1, $attempt, intdiv($nap, 60), gmdate('H:i'));
+                RunLog::defer($pdo, $logId, $nap + 120, "quota wall — napping " . intdiv($nap, 60) . "min (at $nEnt)");
+                // Record the hard cap for Data Status: SAM's Entity API resets at midnight UTC.
+                $ensure();
+                QuotaObs::limitHit($pdo, 'sam', 1000, null, 'SAM Entity API daily limit reached');
                 sleep($nap);
                 $ensure();
                 continue;
             }
             $ensure();
-            $pdo->prepare("INSERT INTO sync_log (source, scope, table_name, rows_upserted, status, message, started_at, finished_at)
-                           VALUES ('sam', 'detail', 'sam_entity', ?, 'error', ?, ?, UTC_TIMESTAMP())")
-                ->execute([$nEnt, substr($e->getMessage(), 0, 500), $start]);
+            RunLog::finish($pdo, $logId, 'sam', 'detail', 'sam_entity', 'error', $nEnt, substr($e->getMessage(), 0, 500), $nReq);
             fwrite(STDERR, "  batch " . ($bi + 1) . " FAILED: " . substr($e->getMessage(), 0, 200) . "\n  Re-run to resume.\n");
             exit(1);
         }
@@ -155,12 +183,11 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
     if (($bi + 1) % 10 === 0 || ($bi + 1) * 50 >= count($ueis)) {
         printf("  %d / %d entities  (%d business types, %d NAICS, %.1f min)\n",
                min(($bi + 1) * 50, count($ueis)), count($ueis), $nBt, $nNz, (microtime(true) - $t0) / 60);
+        RunLog::progress($pdo, $logId, $nEnt, min(($bi + 1) * 50, count($ueis)) . '/' . count($ueis) . " entities · $nBt business types · $nNz NAICS", $nReq);
     }
     usleep($paceUs);
 }
 
 $ensure();
-$pdo->prepare("INSERT INTO sync_log (source, scope, table_name, rows_upserted, status, message, started_at, finished_at)
-               VALUES ('sam', 'detail', 'sam_entity', ?, 'ok', ?, ?, UTC_TIMESTAMP())")
-    ->execute([$nEnt, "detail for $nEnt entities ($nBt business types, $nNz NAICS)", $start]);
+RunLog::finish($pdo, $logId, 'sam', 'detail', 'sam_entity', 'ok', $nEnt, "detail for $nEnt entities ($nBt business types, $nNz NAICS)", $nReq);
 printf("Done. %d entities enriched (%d business types, %d NAICS) in %.1f min.\n", $nEnt, $nBt, $nNz, (microtime(true) - $t0) / 60);

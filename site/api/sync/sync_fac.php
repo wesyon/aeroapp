@@ -23,6 +23,7 @@ require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
 require $root . '/lib/FacClient.php';
+require $root . '/lib/RunLog.php';
 require $root . '/lib/CsvSource.php';
 require $root . '/lib/Normalize.php';   // n_s/n_yn/n_yr/n_num/n_uei/n_d (unit-tested)
 
@@ -119,6 +120,13 @@ $SPEC_FINDINGS = [
     'is_other_matters' => ['is_other_matters', 'yn'], 'is_questioned_costs' => ['is_questioned_costs', 'yn'],
     'is_repeat_finding' => ['is_repeat_finding', 'yn'], 'prior_finding_ref_numbers' => ['prior_finding_ref_numbers', 's'],
 ] + $DENORM;
+
+// FAC delivers one findings row per (finding x award); fac_findings is keyed on
+// (report_id, reference_number), so a finding's award rows collide on the PK. Its
+// Y/N flags must roll up as a boolean OR (a finding IS a modified-opinion /
+// material-weakness finding if ANY of its awards is so flagged) rather than be
+// overwritten by whichever award row lands last. These are exactly the 'yn' cols.
+$FINDINGS_OR_COLS = array_keys(array_filter($SPEC_FINDINGS, fn ($s) => $s[1] === 'yn'));
 
 $SPEC_FTEXT = [
     'report_id' => ['report_id', 's'], 'finding_ref_number' => ['finding_ref_number', 's'],
@@ -230,7 +238,9 @@ if ($source === 'csv') {
     echo "Seeding from FAC CSV extracts: $csvDir  (years " . implode(',', $years) . ")\n";
     $fetch = fn (string $ep, callable $cb) => $csv->fetch($ep, $cb);
 } else {
-    $fac = new FacClient(Env::require('FAC_BASE_URL'), Env::require('FAC_API_KEY'));
+    // $pdo lets FacClient record api.data.gov's X-RateLimit-Remaining to api_quota_obs — the
+    // Data Status FAC quota indicator then shows the API's own count, not a rows÷page estimate.
+    $fac = new FacClient(Env::require('FAC_BASE_URL'), Env::require('FAC_API_KEY'), $pdo, 'fac');
     if ($sinceMode !== null) {
         // reports are immutable once accepted (a resubmission gets a NEW report_id),
         // so filtering by fac_accepted_date is a correct incremental delta.
@@ -381,6 +391,23 @@ function skip_explain(string $table, ?string $err): string
 
 $scopeLabel = $ids !== null ? count($ids) . ' reports' : 'years ' . implode(',', $years);
 
+// Live run tracking for the Data Status FAC card (best-effort — every RunLog call is
+// internally guarded and can never fail the pull): one 'running' row (scope 'pull')
+// updated in place as each table completes, so the console shows "N/13 tables · rows"
+// while a pull is in flight. In incremental mode one cheap FAC count call fetches the
+// expected new-report total upfront; finish() records "pulled N reports" for the card's
+// last-update line. A hard kill mid-run leaves the row 'running' (hidden by the console's
+// freshness checks) — the next run starts its own row.
+$runId = RunLog::start($pdo, 'fac', 'pull', 'fac_general');
+$expectReports = null;
+if (isset($fac) && $sinceMode !== null) {
+    try { $expectReports = $fac->count('general', $filter); } catch (Throwable $e) { /* optional */ }
+    if ($expectReports !== null) echo "Expecting $expectReports new/resubmitted reports\n";
+} elseif ($ids !== null) {
+    $expectReports = count($ids);
+}
+$tablesDone = 0; $grandRows = 0; $generalRows = 0;
+
 foreach ($TABLES as [$endpoint, $dbTable, $spec, $isGeneral]) {
     $start = gmdate('Y-m-d H:i:s');   // UTC, matching log_sync's UTC_TIMESTAMP() finish
     $rows = 0;
@@ -393,7 +420,7 @@ foreach ($TABLES as [$endpoint, $dbTable, $spec, $isGeneral]) {
     $optional = ($endpoint === 'resubmission');
 
     try {
-        $fetch($endpoint, function (array $page) use (&$rows, &$errs, &$firstErr, $pdo, $up, $ftUpsert, $capUpsert, $spec, $dbTable, $isGeneral) {
+        $fetch($endpoint, function (array $page) use (&$rows, &$errs, &$firstErr, $pdo, $up, $ftUpsert, $capUpsert, $spec, $dbTable, $isGeneral, $FINDINGS_OR_COLS) {
         $pdo->beginTransaction();
         foreach ($page as $api) {
             try {
@@ -420,7 +447,7 @@ foreach ($TABLES as [$endpoint, $dbTable, $spec, $isGeneral]) {
                 } elseif ($dbTable === 'fac_corrective_action_plans') {
                     $capUpsert($row);  // same: CAP text is split across rows too
                 } else {
-                    $up->insert($dbTable, $row);
+                    $up->insert($dbTable, $row, $dbTable === 'fac_findings' ? $FINDINGS_OR_COLS : []);
                 }
                 // An additional UEI is covered by this audit but isn't a primary auditee —
                 // put it in the hub flagged has_addl so SAM enrichment resolves its name +
@@ -461,6 +488,9 @@ foreach ($TABLES as [$endpoint, $dbTable, $spec, $isGeneral]) {
         log_sync($pdo, $scopeLabel, $dbTable, $rows, $errs, $start,
                  'endpoint failed, skipped this run: ' . substr($e->getMessage(), 0, 200));
         fwrite(STDERR, "  $endpoint FAILED (optional endpoint, continuing): " . substr($e->getMessage(), 0, 120) . "\n");
+        $tablesDone++;
+        RunLog::progress($pdo, $runId, $grandRows, $tablesDone . '/' . count($TABLES) . ' tables · '
+            . number_format($grandRows) . ' rows' . ($expectReports !== null ? " · ~$expectReports reports" : ''));
         continue;
     }
 
@@ -468,6 +498,10 @@ foreach ($TABLES as [$endpoint, $dbTable, $spec, $isGeneral]) {
              $errs ? "$errs of " . ($rows + $errs) . " rows skipped — " . skip_explain($dbTable, $firstErr) : null);
     $note = $errs ? "  ($errs skipped: " . substr((string) $firstErr, 0, 80) . ')' : '';
     printf("  %-28s %6d rows%s\n", $endpoint, $rows, $note);
+    $tablesDone++; $grandRows += $rows;
+    if ($isGeneral) $generalRows = $rows;
+    RunLog::progress($pdo, $runId, $grandRows, $tablesDone . '/' . count($TABLES) . ' tables · '
+        . number_format($grandRows) . ' rows' . ($expectReports !== null ? " · ~$expectReports reports" : ''));
 }
 
 // Denormalize the federal agency prefix onto the bridge so the dashboard's
@@ -555,5 +589,11 @@ $pdo->exec(
     throw $e;
 }
 if ($safe) $dropBaks();
+
+// Close the live-run row: rows_upserted = REPORTS pulled (fac_general rows — the number a
+// human means by "how many came in"), full detail in the message. Best-effort like start().
+RunLog::finish($pdo, $runId ?? null, 'fac', 'pull', 'fac_general', 'ok', $generalRows ?? 0,
+    number_format($generalRows ?? 0) . ' reports pulled · ' . number_format($grandRows ?? 0)
+    . ' rows across ' . count($TABLES) . " tables ($scopeLabel)");
 
 echo "Done.\n";

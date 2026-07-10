@@ -41,6 +41,8 @@ $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
+require $root . '/lib/RunLog.php';
+require $root . '/lib/QuotaObs.php';
 Env::load(dirname($root, 2) . '/.env');   // above web root (prod; first-set wins)
 Env::load(dirname($root) . '/.env');      // repo root (local dev)
 
@@ -82,12 +84,15 @@ if (isset($args['uei']) && preg_match('/^[A-Za-z0-9]{12}$/', (string) $args['uei
 if ($limit !== null) $ueis = array_slice($ueis, 0, $limit);
 if (!$ueis) {
     echo "Nothing to resolve: every hub entity has a sam_entity row.\n";
+    // Clean no-op so a caught-up night keeps the Data Status timestamp fresh (not "stale").
+    RunLog::finish($pdo, null, 'sam', 'unregistered', 'sam_entity', 'ok', 0, 'nothing to resolve — every hub entity has a sam_entity row');
     exit(0);
 }
 printf("Resolving %d UEIs against the SAM Entity API...\n", count($ueis));
 
-/** GET one page; Http.php already scrubs api_key from error text. */
-function ent_page(string $base, string $key, array $ueis, bool $registered, int $page): array
+/** GET one page; Http.php already scrubs api_key from error text. $reqs counts the actual call
+ *  (SAM sends no usage header, so counting our own requests is the honest quota signal). */
+function ent_page(string $base, string $key, array $ueis, bool $registered, int $page, int &$reqs): array
 {
     $q = http_build_query([
         'ueiSAM' => implode('~', $ueis),
@@ -95,15 +100,16 @@ function ent_page(string $base, string $key, array $ueis, bool $registered, int 
     ] + ($registered ? [] : ['samRegistered' => 'No']));
     [, , $d] = Http::getJson("$base/entity-information/v3/entities?api_key=$key&$q",
                              ['Accept: application/json']);
+    $reqs++;
     return is_array($d) ? $d : [];
 }
 
 /** All entityData records for a UEI batch in one mode (paged, paced). */
-function ent_fetch(string $base, string $key, array $ueis, bool $registered, int $paceUs): array
+function ent_fetch(string $base, string $key, array $ueis, bool $registered, int $paceUs, int &$reqs): array
 {
     $out = [];
     for ($page = 0; ; $page++) {
-        $d = ent_page($base, $key, $ueis, $registered, $page);
+        $d = ent_page($base, $key, $ueis, $registered, $page, $reqs);
         foreach (($d['entityData'] ?? []) as $rec) $out[] = $rec;
         if (count($out) >= (int) ($d['totalRecords'] ?? 0) || !($d['entityData'] ?? [])) break;
         usleep($paceUs);
@@ -168,7 +174,8 @@ function ensure_db(PDO &$pdo, Upserter &$up): void
 // ---- batched resolve ---------------------------------------------------------
 $start = gmdate('Y-m-d H:i:s');
 $t0 = microtime(true);
-$nAssigned = 0; $nRegistered = 0; $nNotFound = 0;
+$nAssigned = 0; $nRegistered = 0; $nNotFound = 0; $nReq = 0;   // $nReq = actual SAM Entity API calls (quota truth)
+$logId = RunLog::start($pdo, 'sam', 'unregistered', 'sam_entity');   // 'running' row; finalized below
 
 foreach (array_chunk($ueis, 50) as $bi => $batch) {
     // quota walls (HTTP 429 past Http.php's short retries) ride out the daily reset,
@@ -177,7 +184,7 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
         try {
             // 1) never-registered UEIs ("ID Assigned"): the expected majority
             $found = [];
-            foreach (ent_fetch($base, $key, $batch, false, $paceUs) as $rec) {
+            foreach (ent_fetch($base, $key, $batch, false, $paceUs, $nReq) as $rec) {
                 $row = ent_row($rec);
                 $found[$row['uei']] = true;
                 $row['registration_status'] ??= 'ID Assigned';
@@ -192,7 +199,7 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
             //    extract load — the loader only keeps UEIs already in the hub)
             $left = array_values(array_diff(array_map('strtoupper', $batch), array_keys($found)));
             if ($left) {
-                foreach (ent_fetch($base, $key, $left, true, $paceUs) as $rec) {
+                foreach (ent_fetch($base, $key, $left, true, $paceUs, $nReq) as $rec) {
                     $row = ent_row($rec);
                     $found[$row['uei']] = true;
                     ensure_db($pdo, $up);
@@ -220,12 +227,16 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
                 $nap = $attempt <= 2 ? 900 : 3600;
                 printf("  batch %d quota wall (attempt %d) - sleeping %d min... [%s]\n",
                        $bi + 1, $attempt, intdiv($nap, 60), gmdate('H:i'));
+                RunLog::defer($pdo, $logId, $nap + 120, "quota wall — napping " . intdiv($nap, 60) . "min");
+                // Record the hard cap for Data Status: SAM's Entity API resets at midnight UTC.
+                ensure_db($pdo, $up);
+                QuotaObs::limitHit($pdo, 'sam', 1000, null, 'SAM Entity API daily limit reached');
                 sleep($nap);
                 continue;
             }
             ensure_db($pdo, $up);   // the failure may BE the dead connection; log on a live one
-            unreg_log($pdo, $nAssigned + $nRegistered + $nNotFound, 'error',
-                      substr($e->getMessage(), 0, 500), $start);
+            RunLog::finish($pdo, $logId, 'sam', 'unregistered', 'sam_entity', 'error',
+                           $nAssigned + $nRegistered + $nNotFound, substr($e->getMessage(), 0, 500), $nReq);
             fwrite(STDERR, "  batch " . ($bi + 1) . " FAILED: " . substr($e->getMessage(), 0, 200)
                          . "\n  Re-run to resume (resolved UEIs are skipped).\n");
             exit(1);
@@ -235,13 +246,16 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
         printf("  %5d / %d UEIs  (ID Assigned %d, registered %d, not found %d, %.1f min)\n",
                min(($bi + 1) * 50, count($ueis)), count($ueis),
                $nAssigned, $nRegistered, $nNotFound, (microtime(true) - $t0) / 60);
+        RunLog::progress($pdo, $logId, $nAssigned + $nRegistered + $nNotFound,
+                         min(($bi + 1) * 50, count($ueis)) . '/' . count($ueis) . " UEIs · ID Assigned $nAssigned · registered $nRegistered · not found $nNotFound", $nReq);
     }
     usleep($paceUs);
 }
 
 ensure_db($pdo, $up);
-unreg_log($pdo, $nAssigned + $nRegistered + $nNotFound, 'ok',
-          "ID Assigned $nAssigned, registered $nRegistered, not found $nNotFound", $start);
+RunLog::finish($pdo, $logId, 'sam', 'unregistered', 'sam_entity', 'ok',
+               $nAssigned + $nRegistered + $nNotFound,
+               "ID Assigned $nAssigned, registered $nRegistered, not found $nNotFound", $nReq);
 printf("Done. %d UEIs resolved in %.1f min: %d ID Assigned, %d registered (extract stragglers), %d not found.\n",
        $nAssigned + $nRegistered + $nNotFound, (microtime(true) - $t0) / 60,
        $nAssigned, $nRegistered, $nNotFound);

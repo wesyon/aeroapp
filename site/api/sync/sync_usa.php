@@ -21,6 +21,7 @@ $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
 require $root . '/lib/Http.php';
+require $root . '/lib/RunLog.php';
 Env::load(dirname($root, 2) . '/.env');   // above web root (prod; first-set wins)
 Env::load(dirname($root) . '/.env');      // repo root (local dev)
 
@@ -105,11 +106,13 @@ if (isset($args['uei'])) {
         foreach (preg_split('/\R+/', (string) $gu) ?: [] as $u) { if (($u = trim($u)) !== '') $set[] = $u; }
     }
     $self = array_values(array_unique($set));
+    $selfPh = implode(',', array_fill(0, count($self), '?'));
     $m = $pdo->prepare(
-        "SELECT DISTINCT additional_uei FROM fac_additional_ueis
-         WHERE auditee_uei IN (" . implode(',', array_fill(0, count($self), '?')) . ")"
+        "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfPh)
+         UNION
+         SELECT DISTINCT related_uei FROM entity_related_uei WHERE uei IN ($selfPh)"
     );
-    $m->execute($self);
+    $m->execute(array_merge($self, $self));
     foreach ($m->fetchAll(PDO::FETCH_COLUMN) as $u) { if ($u !== null && $u !== '') $set[] = $u; }
     $ueis = array_values(array_unique(array_filter($set)));
 } elseif ($oldest) {
@@ -127,6 +130,8 @@ if (isset($args['uei'])) {
              SELECT DISTINCT auditee_uei uei   FROM fac_findings        WHERE auditee_uei   IS NOT NULL
              UNION
              SELECT DISTINCT additional_uei uei FROM fac_additional_ueis WHERE additional_uei IS NOT NULL AND additional_uei <> ''
+             UNION
+             SELECT DISTINCT related_uei uei    FROM entity_related_uei  WHERE related_uei IS NOT NULL AND related_uei <> ''
          ) u
          LEFT JOIN usa_recipient r ON r.uei = u.uei
          ORDER BY (r.last_synced IS NOT NULL), r.last_synced ASC, u.uei
@@ -162,8 +167,9 @@ if (!$oldest) {
     }
 }
 
-$total = count($ueis); $done = 0; $awards = 0; $started = time();
+$total = count($ueis); $done = 0; $awards = 0; $started = time(); $lastProg = $started;
 echo "USAspending sync: $total UEIs (skip those synced < $maxage days)\n";
+$logId = RunLog::start($pdo, 'usaspending', 'prime_awards', 'usa_award');   // best-effort; finalized below
 
 $delAwards = $pdo->prepare("DELETE FROM usa_award WHERE recipient_uei = ?");
 $markDone  = $pdo->prepare("UPDATE usa_recipient SET name = COALESCE(?, name), sync_truncated = ?, last_synced = UTC_TIMESTAMP() WHERE uei = ?");
@@ -248,8 +254,16 @@ foreach ($ueis as $uei) {
     } catch (Throwable $e) {
         fwrite(STDERR, "  $uei error: " . substr($e->getMessage(), 0, 80) . "\n");
     }
-    if (++$done % 200 === 0) {
+    // Checkpoint often (every 25 UEIs OR 30s), not every 200: the 28-min host reaper often kills a
+    // run before UEI 200, and with the old cadence that run logged rows_upserted=0 even when it had
+    // loaded thousands of awards — making a productive-but-cut-off run look like a no-op. Frequent
+    // checkpoints keep the recorded rows/progress honest so the admin history can trust them.
+    $done++;
+    if ($done % 25 === 0 || time() - $lastProg >= 30) {
         printf("  %d/%d UEIs, %d awards (%.1f UEI/s)\n", $done, $total, $awards, $done / max(1, time() - $started));
+        RunLog::progress($pdo, $logId, $awards, "$done/$total UEIs · $awards awards");
+        $lastProg = time();
     }
 }
+RunLog::finish($pdo, $logId, 'usaspending', 'prime_awards', 'usa_award', 'ok', $awards, "$done/$total UEIs processed · $awards awards loaded");
 printf("Done. %d UEIs processed, %d awards loaded.\n", $done, $awards);

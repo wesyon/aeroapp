@@ -152,6 +152,7 @@ if (($agency = q_str('agency')) !== null && preg_match('/^[0-9A-Za-z]{2,4}$/', $
 
 $whereSql = 'WHERE ' . implode(' AND ', $where);   // always carries the universe base condition
 $limit = q_int('limit', 200, 1, 1000);
+$offset = q_int('offset', 0, 0, 5000000);   // paginated scroll (e.g. the sidebar recipient browser)
 
 // Universe + identity from the entity directory (authoritative, score-independent);
 // aero_score (alias s) LEFT-joined only for the composite/tier display.
@@ -164,7 +165,7 @@ $rowsStmt = $pdo->prepare(
     "SELECT e.uei, e.display_name name, e.state, e.entity_type, e.audit_count, e.latest_audit_year,
             e.federal_latest, s.composite_score, s.tier
      $from $whereSql
-     ORDER BY e.display_name, e.uei LIMIT $limit"
+     ORDER BY e.display_name, e.uei LIMIT $limit OFFSET $offset"
 );
 $rowsStmt->execute($params);
 $rows = array_map(function ($r) use ($stateGovt, $terrSet, $mergedById) {
@@ -242,10 +243,60 @@ if ($rows) {
         return $best;
     };
 
+    // USAspending money for the shown page: sum obligations + outlays across each row's
+    // FULL rollup family — crosswalk group siblings, auditor-declared additional UEIs,
+    // and curated components — so state governments read their real totals (a parent-only
+    // sum would repeat the Oklahoma "-$47M vs $14.9B" artifact the linkage work fixed).
+    $famOf = [];   // display uei => member uei set (incl. itself / group siblings)
+    $allFam = [];
+    foreach ($ueis as $u) {
+        $fam = array_values(array_unique($candOf[$u] ?? [$u]));
+        $famOf[$u] = $fam;
+        foreach ($fam as $m) $allFam[$m] = true;
+    }
+    if ($allFam) {
+        $fin = implode(',', array_fill(0, count($allFam), '?'));
+        $ownerOf = [];   // any family member => display uei (first claim wins)
+        foreach ($famOf as $u => $fam) foreach ($fam as $m) $ownerOf[$m] ??= $u;
+        $mq = $pdo->prepare(
+            "SELECT auditee_uei p, additional_uei m FROM fac_additional_ueis WHERE auditee_uei IN ($fin)
+             UNION
+             SELECT uei p, related_uei m FROM entity_related_uei WHERE uei IN ($fin)"
+        );
+        $mq->execute(array_merge(array_keys($allFam), array_keys($allFam)));
+        foreach ($mq as $r) {
+            $owner = $ownerOf[$r['p']] ?? null;
+            if ($owner !== null && $r['m'] !== '' && !isset($ownerOf[$r['m']])) {
+                $ownerOf[$r['m']] = $owner;
+                $famOf[$owner][] = $r['m'];
+            }
+        }
+        $allMembers = array_keys($ownerOf);
+        $money = [];   // member uei => [obligated, outlays]
+        foreach (array_chunk($allMembers, 900) as $chunk) {
+            $min = implode(',', array_fill(0, count($chunk), '?'));
+            $ms = $pdo->prepare("SELECT recipient_uei u, SUM(total_obligation) o, SUM(total_outlay) ol
+                                 FROM usa_award WHERE recipient_uei IN ($min) GROUP BY recipient_uei");
+            $ms->execute($chunk);
+            foreach ($ms as $mr) $money[$mr['u']] = [(float) $mr['o'], (float) $mr['ol']];
+        }
+        $usaMoney = [];   // display uei => [obligated|null, outlays|null]
+        foreach ($famOf as $u => $fam) {
+            $o = null; $ol = null;
+            foreach (array_unique($fam) as $m) {
+                if (!isset($money[$m])) continue;
+                $o = ($o ?? 0) + $money[$m][0];
+                $ol = ($ol ?? 0) + $money[$m][1];
+            }
+            $usaMoney[$u] = [$o, $ol];
+        }
+    }
+
     $today = date('Y-m-d');
     foreach ($rows as &$r) {
         $f = $fac[$r['uei']] ?? null;
         $r['ein'] = $f['ein'] ?? null;
+        [$r['obligated'], $r['outlays']] = $usaMoney[$r['uei']] ?? [null, null];
         // next FY ends one year after the latest filed FY-end (two for a biennial
         // filer); the audit is due 9 months after that (2 CFR 200.512) — 21 (or 33)
         // clamped months total (lib/Rules.php; naive '+1 year +9 months' rolls

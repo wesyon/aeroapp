@@ -1,5 +1,997 @@
 [
     {
+        "date":  "2026-07-09 17:02",
+        "commit":  "fb7b7e2",
+        "changes":  [
+                        "Passthrough tab: roll up the reporting family (SF-SAC additional UEIs + curated links)"
+                    ]
+    },
+    {
+        "date":  "2026-07-09 16:30",
+        "commit":  "5b1dc99",
+        "changes":  [
+                        "start-local: report PostgreSQL mirror status (never auto-start it)",
+                        "Local Control: PostgreSQL card (USAspending mirror, port 5433)"
+                    ]
+    },
+    {
+        "date":  "2026-07-09 11:09",
+        "commit":  "d8220a3",
+        "changes":  [
+                        "Outlay difference: FY-scoped deletes so API-sourced months survive rebuilds",
+                        "Outlay difference pass: batch commits (1,000 awards per transaction)",
+                        "Merge feat/usaspending-outlays-entity-fy: FY-split outlays (File C months)",
+                        "Matrix: accept small valid zips (empty agency-periods no longer wedge)",
+                        "Matrix: clear stale partial downloads on restart (fix 416 wedge)",
+                        "Align admin.php: txn-coverage counts via usa_award (from main)",
+                        "Align admin.php with the prod status-bars guard",
+                        "USAspending program names: read titles from assistance_listing (on prod)",
+                        "USAspending outlays by entity fiscal year"
+                    ]
+    },
+    {
+        "date":  "2026-07-09 07:57",
+        "commit":  "f550ad7",
+        "changes":  [
+                        "Grain tags: mark every obligation/outlay figure as award-level vs month-level",
+                        "Data Status: File C coverage note states the realistic ceiling (not 100%)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 21:29",
+        "commit":  "e7ba031",
+        "changes":  [
+                        "Search Recipients: only the recipient name navigates, not the whole row"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 21:15",
+        "commit":  "9910b3a",
+        "changes":  [
+                        "Search Recipients: drop the EIN column",
+                        "Search Recipients: Obligated + Outlays columns; \u0027Federal $ (latest)\u0027 renamed Expended"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 21:01",
+        "commit":  "725b558",
+        "changes":  [
+                        "Data Status: 25s whole-payload cache on the status action"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:25",
+        "commit":  "8de9d60",
+        "changes":  [
+                        "Passthrough flag drilldown: list every feeding prime"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:23",
+        "commit":  "bb657f7",
+        "changes":  [
+                        "Passthrough: SAM verify links use the entity-search deep link"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:22",
+        "commit":  "7d940c2",
+        "changes":  [
+                        "Passthrough: hover explanations on the five view tabs"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:20",
+        "commit":  "2a09ac0",
+        "changes":  [
+                        "Passthrough: \u0027Corridors\u0027 tab renamed \u0027Relationships\u0027"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:17",
+        "commit":  "365baaa",
+        "changes":  [
+                        "Passthrough flags: expandable rows show the feeding primes"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:08",
+        "commit":  "8d4ec8c",
+        "changes":  [
+                        "FAC vs SAM: plain-language intro"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:04",
+        "commit":  "861de60",
+        "changes":  [
+                        "Nav: System group (Settings/Architecture/About) separated; Passthrough subtitle in plain language"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 20:00",
+        "commit":  "f7c895c",
+        "changes":  [
+                        "Passthrough: name the unclassified type bucket"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 19:57",
+        "commit":  "785073c",
+        "changes":  [
+                        "Passthrough: purpose-built bar-row panels (aligned grid, status badges)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 19:52",
+        "commit":  "9f0cbfe",
+        "changes":  [
+                        "Passthrough: one type vocabulary in the mix panel"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 19:49",
+        "commit":  "043e60b",
+        "changes":  [
+                        "Passthrough dashboard v2: oversight + corridors views, HHS share, per-year flag census"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 19:40",
+        "commit":  "90eb586",
+        "changes":  [
+                        "Passthrough dashboard (#/passthrough) + FSRS amount sanitation"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 18:03",
+        "commit":  "2c36f2d",
+        "changes":  [
+                        "Search Recipients: hide the HHS/All-federal toggle on prod (same rationale as the Portfolio Dashboard - prod data is HHS-scoped at the source)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 18:00",
+        "commit":  "4aee484",
+        "changes":  [
+                        "Portfolio Dashboard: hide the HHS/All-federal toggle on prod"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:49",
+        "commit":  "b1d851a",
+        "changes":  [
+                        "Evaluation: Open-entity-profile button on the Dashboard view only"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:28",
+        "commit":  "a0d4392",
+        "changes":  [
+                        "Profile: Back-to-dashboard button matches the primary blue style"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:27",
+        "commit":  "10118bf",
+        "changes":  [
+                        "Evaluation: arrow on the Open entity profile button"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:24",
+        "commit":  "11c0bfe",
+        "changes":  [
+                        "Profile: state govts route Back-to-dashboard to State Govt scope; Evaluation tab export styled like USAspending\u0027s"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:20",
+        "commit":  "06f5178",
+        "changes":  [
+                        "Profile header: audit-cycle badge next to the name (always visible)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:17",
+        "commit":  "9b2e15f",
+        "changes":  [
+                        "Profile: \u0027Back to dashboard\u0027 replaces Print; Audits tab drops no-op Apply"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:10",
+        "commit":  "360334c",
+        "changes":  [
+                        "Evaluation: \u0027Open entity profile\u0027 button, right-justified in the filter row"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:05",
+        "commit":  "4862f49",
+        "changes":  [
+                        "Evaluation: selection bar above KPI row; Awards tab defaults to All federal"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 17:01",
+        "commit":  "20cc350",
+        "changes":  [
+                        "Evaluation: \u0027Open profile\u0027 tile in the KPI row for the selected entity"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 16:32",
+        "commit":  "1f2d0c3",
+        "changes":  [
+                        "Evaluation: L1-L7 KPI tiles are display-only"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 16:30",
+        "commit":  "a17090f",
+        "changes":  [
+                        "Eval dashboard: plain-language card titles"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 16:26",
+        "commit":  "ed43100",
+        "changes":  [
+                        "Eval dashboard: Remediation flow replaces Program risk board"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 16:21",
+        "commit":  "1a02b71",
+        "changes":  [
+                        "Eval dashboard: Filing lateness + Problem aging fill their cards"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 16:17",
+        "commit":  "d886c1f",
+        "changes":  [
+                        "Eval dashboard: final row order"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:55",
+        "commit":  "7dec995",
+        "changes":  [
+                        "Remediation flow: sankey flex-fills its card"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:51",
+        "commit":  "8ddcbde",
+        "changes":  [
+                        "Remediation flow: two-column sankey with meaning-colored ribbons"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:47",
+        "commit":  "bb26e8d",
+        "changes":  [
+                        "Eval dashboard: registry scopes get the same list card as entity cohorts"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:43",
+        "commit":  "39cebef",
+        "changes":  [
+                        "Findings Trend: whole-scope aggregate when nothing is selected"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:40",
+        "commit":  "b386d2b",
+        "changes":  [
+                        "Eval dashboard: analytics rows reordered"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:33",
+        "commit":  "a244313",
+        "changes":  [
+                        "Eval dashboard: findings trend moved to a full-width card below the map"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:28",
+        "commit":  "5456eae",
+        "changes":  [
+                        "Eval dashboard: Findings Trend chart for the inspected entity"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:09",
+        "commit":  "6fa046b",
+        "changes":  [
+                        "Evaluation export: two sheets - Count (level matrix) and Review (posture)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 15:01",
+        "commit":  "ee76114",
+        "changes":  [
+                        "Evaluation: clear-state button next to the state filter"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 14:56",
+        "commit":  "2cadbc4",
+        "changes":  [
+                        "Evaluation: keep the state filter when switching entity types",
+                        "File C breakdown: +n deltas between snapshots, Eastern-time stamps",
+                        "Data Status: File C staging by-agency breakdown (10-min server cache)",
+                        "Data Status: live File C staging sub-job (local bulk matrix pulse)",
+                        "Data Status: raise admin route time limit (cold-cache 500s under backfill load)"
+                    ]
+    },
+    {
+        "date":  "2026-07-08 10:24",
+        "commit":  "7dc1f39",
+        "changes":  [
+                        "Related UEIs: program-specific audits shown as \u0027program audit\u0027, not \u0027files own\u0027",
+                        "Related UEIs: member links land on Evaluation (app convention)",
+                        "Related UEIs: link member names only when the member has its own audits",
+                        "Related UEIs card: \"Audit coverage\" column distinguishes self-filers",
+                        "Component profiles: \"Component of {parent}\" header badge (reverse membership)",
+                        "Curated component-UEI links (entity_related_uei) - Oklahoma test case",
+                        "SAM wave: run unregistered lookup before detail enrichment"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:35",
+        "commit":  "630aa57",
+        "changes":  [
+                        "Audits/Awards tabs: \u0027(SEFA)\u0027 dropped from Expended headers"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:34",
+        "commit":  "8ea55f1",
+        "changes":  [
+                        "Awards tab: header tooltips for Obligated and Expended (SEFA)"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:33",
+        "commit":  "289936a",
+        "changes":  [
+                        "Audits/Awards tabs: Obligated column first, \u0027(USAspending)\u0027 dropped from headers"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:28",
+        "commit":  "161bf2b",
+        "changes":  [
+                        "Audits tab: rename \u0027Federal \\$\u0027 to \u0027Expended (SEFA)\u0027"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:16",
+        "commit":  "aecf314",
+        "changes":  [
+                        "Audits tab: Obligated (USAspending) column per audit year"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 15:11",
+        "commit":  "ff7eb95",
+        "changes":  [
+                        "Awards tab: Obligated (USAspending) column beside Expended (SEFA)"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 14:38",
+        "commit":  "62e6be2",
+        "changes":  [
+                        "Eval dashboard: lone Inspector card fills the column on registry scopes"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:41",
+        "commit":  "882c0f4",
+        "changes":  [
+                        "Eval dashboard: entity list fits the map row and scrolls inside it"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:36",
+        "commit":  "ccd61bf",
+        "changes":  [
+                        "Eval dashboard: entity list returns as its own card under the Inspector"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:31",
+        "commit":  "25358dd",
+        "changes":  [
+                        "Map points: revert the HHS build filter - it blanked local dots"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:26",
+        "commit":  "0d0a8dd",
+        "changes":  [
+                        "Geo map: move zoom controls to mid-right, clear of Maine"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:19",
+        "commit":  "0b32090",
+        "changes":  [
+                        "Eval map: geographic-only + zoom controls"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:15",
+        "commit":  "155484b",
+        "changes":  [
+                        "Eval dashboard: entity scopes keep the Inspector; map dots feed it"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:09",
+        "commit":  "044a041",
+        "changes":  [
+                        "Revert \"Posture distribution: re-scope to the selected state\u0027s level counts\""
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:06",
+        "commit":  "c9f4b53",
+        "changes":  [
+                        "Posture distribution: re-scope to the selected state\u0027s level counts"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:03",
+        "commit":  "77d0a53",
+        "changes":  [
+                        "Posture distribution: highlight the focused state\u0027s segment"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 13:01",
+        "commit":  "aff0f5a",
+        "changes":  [
+                        "Evaluation: honest scope labels with territories rolled in"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 12:52",
+        "commit":  "d824528",
+        "changes":  [
+                        "Evaluation: roll US territories into State Govt"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 12:40",
+        "commit":  "07511dd",
+        "changes":  [
+                        "Entity profile: FAC vs SAM gets its own tab"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 11:50",
+        "commit":  "54e94e3",
+        "changes":  [
+                        "FAC vs SAM: visible founding-conflict counter with click-to-filter"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 11:45",
+        "commit":  "f8a2596",
+        "changes":  [
+                        "FAC vs SAM: rename + SAM-registration check + founding-conflict flag"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 11:30",
+        "commit":  "553b729",
+        "changes":  [
+                        "Cross-Source Check dashboard: SAM vs FAC discrepancies across ALL entities"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 11:11",
+        "commit":  "309da12",
+        "changes":  [
+                        "Nightly panel: time-capped steps show how long they actually ran"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 11:07",
+        "commit":  "c398ec4",
+        "changes":  [
+                        "Nightly panel: amber \"Time-capped\" for the designed reap, red only for real failures"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 08:37",
+        "commit":  "4d303b2",
+        "changes":  [
+                        "Data Status: outlay_month expected-empty on prod + \u0027records\u0027 in running why"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 08:24",
+        "commit":  "77532d5",
+        "changes":  [
+                        "USAspending export: \"Expended (audit, allocated)\" column on the Awards sheet"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 08:13",
+        "commit":  "d4255e8",
+        "changes":  [
+                        "USAspending export: one FY column, matching the active basis"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 08:01",
+        "commit":  "8854526",
+        "changes":  [
+                        "USAspending tab: re-hide outlays on prod (dev-only again) per client"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 07:19",
+        "commit":  "73726e9",
+        "changes":  [
+                        "Data Status: Detail-enrichment blurb states the universe arithmetic with live counts"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 07:13",
+        "commit":  "7dcf1dd",
+        "changes":  [
+                        "Data Status: SAM card shows WHAT the lookups found + denominator blurb + honest cadence"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 07:07",
+        "commit":  "64e2a31",
+        "changes":  [
+                        "Data Status: live FAC pull progress + \"last update pulled N reports\" line"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 06:47",
+        "commit":  "6a19446",
+        "changes":  [
+                        "Nightly panel: \u0027elapsed\u0027 tracks the running step, not the day\u0027s first step"
+                    ]
+    },
+    {
+        "date":  "2026-07-07 06:34",
+        "commit":  "ec95147",
+        "changes":  [
+                        "Nightly: split into per-wave cron jobs (fac / sam / usa-awards / usa-txns)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 22:41",
+        "commit":  "dca5bcb",
+        "changes":  [
+                        "Entity Info: Cross-Source Check card (SAM vs FAC shared fields)",
+                        "Revert \"Evaluation tab: \"{Agency} at a glance\" card (client ask - HHS findings at first glance)\""
+                    ]
+    },
+    {
+        "date":  "2026-07-06 22:22",
+        "commit":  "8006792",
+        "changes":  [
+                        "Evaluation tab: \"{Agency} at a glance\" card (client ask - HHS findings at first glance)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 22:08",
+        "commit":  "9e0e286",
+        "changes":  [
+                        "Awards view: \"Award (flat list)\" grouping option"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 22:02",
+        "commit":  "c6a9793",
+        "changes":  [
+                        "Awards view: the per-entity reset effect also defaults Group by to Program"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:58",
+        "commit":  "04ffbc0",
+        "changes":  [
+                        "Awards view: default Group by to Program (ALN)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:56",
+        "commit":  "f91fe52",
+        "changes":  [
+                        "Awards view: Expended (audit) column extends to Agency / Sub-Agency groupings"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:49",
+        "commit":  "9b78788",
+        "changes":  [
+                        "Awards view: \"Expended (audit)\" column on Program grouping"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:46",
+        "commit":  "f99f6d1",
+        "changes":  [
+                        "Comparative: remove the SEFA \"expended\" sub-lines per client"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:41",
+        "commit":  "44344ae",
+        "changes":  [
+                        "USAspending tab: SEFA expenditures, award links, truncation floor, outlays resurfaced"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:31",
+        "commit":  "d8116d8",
+        "changes":  [
+                        "USAspending tab: FY caption + Data-as-of on their own line under the filters"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:29",
+        "commit":  "8601c82",
+        "changes":  [
+                        "USAspending tab: say which months an \"FY\" bucket covers (entity vs federal basis)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:25",
+        "commit":  "8878da6",
+        "changes":  [
+                        "USAspending tab: \"Data as of\" freshness stamp in the filter row"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 21:06",
+        "commit":  "135f934",
+        "changes":  [
+                        "Data Status: keep live/orphaned \u0027running\u0027 rows out of the Incomplete-sync-runs card"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:55",
+        "commit":  "395a886",
+        "changes":  [
+                        "Data Status: SAM-lookup coverage counts RESOLVED lookups, not has_sam"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:37",
+        "commit":  "641499c",
+        "changes":  [
+                        "Data Status: singular \u0027night\u0027 in the nights-to-100% estimate"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:35",
+        "commit":  "6bf5e88",
+        "changes":  [
+                        "Data Status: fix stale backfilling \"why\" that referenced per-run Completed labels"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:30",
+        "commit":  "0a5e043",
+        "changes":  [
+                        "Data Status: run history -\u003e per-day activity bars (no more run-level labels)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:16",
+        "commit":  "d065248",
+        "changes":  [
+                        "Data Status: restore the Recent-runs dropdown on all jobs"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:13",
+        "commit":  "36a23b9",
+        "changes":  [
+                        "Data Status: hide the raw run log on healthy jobs — one summary line instead"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:07",
+        "commit":  "faaf3a9",
+        "changes":  [
+                        "Run history: plain \"Completed\" / \"No changes\" for a done crawl\u0027s nightly runs"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 20:03",
+        "commit":  "ff2a0cf",
+        "changes":  [
+                        "Run history: \"Update check · N of M recipients\" for a done crawl\u0027s routine runs"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 19:58",
+        "commit":  "9f0582c",
+        "changes":  [
+                        "Run history: consistent labels for a done crawl (fix Completed-vs-Refreshed mix)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 19:53",
+        "commit":  "d0216ed",
+        "changes":  [
+                        "Run history: \"Refreshed\" (not \"Partial · resumes\") once a job is fully backfilled"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 19:40",
+        "commit":  "7fb333f",
+        "changes":  [
+                        "Data Status: show outlay-build progress under USAspending (from a pushed metric)"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 19:10",
+        "commit":  "6967858",
+        "changes":  [
+                        "Admin bars: subtitles clarifying the Prime-crawl vs Transaction denominators",
+                        "HHS-scope the map build + stop -RefreshData clobbering prod\u0027s USAspending awards"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 17:55",
+        "commit":  "a69e337",
+        "changes":  [
+                        "Eval KPIs: L1-L7 cards report the focused state\u0027s own counts"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 17:02",
+        "commit":  "3c420ed",
+        "changes":  [
+                        "Single-audit deadline: snap FYE+9mo to month-end (Jun-30 -\u003e Mar-31, not Mar-30)",
+                        "load_d2_txn: --prodawards to union prod-only award ids into the D2 filter"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 09:22",
+        "commit":  "3c0e5df",
+        "changes":  [
+                        "Prime crawl: honest run history — checkpoint often + present cut-offs by work done"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 09:07",
+        "commit":  "205c0eb",
+        "changes":  [
+                        "Admin bars: an interrupted nightly batch is not a problem for gradual backfills"
+                    ]
+    },
+    {
+        "date":  "2026-07-06 09:03",
+        "commit":  "df1accf",
+        "changes":  [
+                        "Admin bars: don\u0027t red-flag an interrupted refresh on a fully-backfilled job",
+                        "Add File D2 bulk loader: rebuild txn_month from Award Data Archive zips"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 12:25",
+        "commit":  "938bebe",
+        "changes":  [
+                        "Fix txn-coverage bar: count via usa_award, not usa_recipient"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 11:39",
+        "commit":  "9d5bb1e",
+        "changes":  [
+                        "Show USAspending sync status bars on prod (backend-only)",
+                        "USAspending program names: read titles from assistance_listing (on prod)",
+                        "Hide USAspending outlays on prod until the entity-FY pipeline ships"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 11:35",
+        "commit":  "5aba4ff",
+        "changes":  [
+                        "Align admin.php with the prod status-bars guard",
+                        "USAspending program names: read titles from assistance_listing (on prod)",
+                        "USAspending outlays by entity fiscal year"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 09:53",
+        "commit":  "9d5bb1e",
+        "changes":  [
+                        "Show USAspending sync status bars on prod (backend-only)"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 08:29",
+        "commit":  "5995df6",
+        "changes":  [
+                        "USAspending program names: read titles from assistance_listing (on prod)"
+                    ]
+    },
+    {
+        "date":  "2026-07-02 07:52",
+        "commit":  "92ff08a",
+        "changes":  [
+                        "Hide USAspending outlays on prod until the entity-FY pipeline ships"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 14:13",
+        "commit":  "4fd3db2",
+        "changes":  [
+                        "USAspending export: Entity FY / Federal FY columns show the year only"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 13:58",
+        "commit":  "b677eb5",
+        "changes":  [
+                        "USAspending export: FY columns respect the selected fiscal year"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 13:41",
+        "commit":  "70aeff7",
+        "changes":  [
+                        "USAspending export: drop the 4 unsynced fields, keep Date signed"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 13:32",
+        "commit":  "dcdd27e",
+        "changes":  [
+                        "USAspending export: add Date signed, Description, Place of performance, Subaward amount, Parent recipient"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 13:25",
+        "commit":  "94239a9",
+        "changes":  [
+                        "USAspending export: add Entity FY + Federal FY columns to Awards sheet"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 12:55",
+        "commit":  "440cf47",
+        "changes":  [
+                        "USAspending tab: Export to Excel button",
+                        "Nightly: raise USAspending txn-month chunk 400 -\u003e 1500"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 12:27",
+        "commit":  "b18547d",
+        "changes":  [
+                        "USAspending: targeted txn-month backfill mode + graceful Comparative empty-state"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 11:55",
+        "commit":  "88c4423",
+        "changes":  [
+                        "Data Status: clearer SAM sub-job title + plain-language line"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 11:42",
+        "commit":  "3cc2dbd",
+        "changes":  [
+                        "SAM: fill structure/business types/NAICS from the extract, not the per-UEI API"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 11:05",
+        "commit":  "2365e46",
+        "changes":  [
+                        "Data Status: report real API quota usage, not an estimate"
+                    ]
+    },
+    {
+        "date":  "2026-07-01 09:39",
+        "commit":  "7b241e3",
+        "changes":  [
+                        "Fix: SAM Entity API is 1,000/DAY (revert over-correction) — endpoints differ",
+                        "Fix: SAM API limit is ~1,000/HOUR (shared key), not per-day",
+                        "Data Status: add FAC API quota (api.data.gov ~1,000 req/hour)",
+                        "Data Status: per-run reason tags + plain-language statuses",
+                        "Data Status: explain the \"why\" of each status + show SAM API daily quota",
+                        "Data Status: live \"Nightly run\" step-by-step panel",
+                        "Data Status: faster interrupt detection + RunLog across USAspending \u0026 reference",
+                        "Data Status: robust sync run tracking (lifecycle + backfill progress)",
+                        "Data Status: readable source cards (stat panel, freshness edge, clearer controls)",
+                        "Add AERO Signals: anomaly \u0026 integrity review console (internal-first)",
+                        "Fix SAM detail enrichment: never ran on prod; blank Classification card"
+                    ]
+    },
+    {
+        "date":  "2026-06-30 10:59",
+        "commit":  "3b11650",
+        "changes":  [
+                        "Architecture page: live dictionary row counts, click hint, Overview tab"
+                    ]
+    },
+    {
+        "date":  "2026-06-30 10:43",
+        "commit":  "ddbee42",
+        "changes":  [
+                        "Complete data dictionary: describe all 521 columns"
+                    ]
+    },
+    {
+        "date":  "2026-06-30 10:38",
+        "commit":  "9a621e2",
+        "changes":  [
+                        "Align data dictionary summary columns across groups",
+                        "Update Technical Overview: pipeline/application wording; regenerate docx"
+                    ]
+    },
+    {
+        "date":  "2026-06-30 10:27",
+        "commit":  "cdcbc98",
+        "changes":  [
+                        "Add Architecture reference page: diagram, tech stack, data dictionary"
+                    ]
+    },
+    {
+        "date":  "2026-06-29 10:16",
+        "commit":  "c95ca6e",
+        "changes":  [
+                        "Add AERO Technical Overview (system/architecture doc) for client",
+                        "Add subrecipient transparency policy materials",
+                        "Add client DataReview files (State Evaluations + per-state FAC downloads)",
+                        "Add repair_finding_flags.php: one-off boolean-OR backfill for collapsed flags"
+                    ]
+    },
+    {
+        "date":  "2026-06-26 18:38",
+        "commit":  "01ca50d",
+        "changes":  [
+                        "Fix: roll up multi-award finding flags as boolean OR (was last-write-wins)"
+                    ]
+    },
+    {
+        "date":  "2026-06-22 19:49",
+        "commit":  "89fb292",
+        "changes":  [
+                        "Eval: state dropdown for all types, synced both ways with the map"
+                    ]
+    },
+    {
+        "date":  "2026-06-22 19:16",
+        "commit":  "5bc5ff7",
+        "changes":  [
+                        "Eval Dashboard: pair the lower cards into balanced rows"
+                    ]
+    },
+    {
+        "date":  "2026-06-22 18:51",
+        "commit":  "9ba6f3b",
+        "changes":  [
+                        "Eval Dashboard geographic map + exact-level entity dots; Evaluation as landing",
+                        "Nightly watchdog: self-contained email alert on a stalled/failed run",
+                        "Nightly: split into load-bearing core + best-effort tail (fix silent stall)",
+                        "Fix Comparative OBLIGATED card showing one year instead of all FYs"
+                    ]
+    },
+    {
         "date":  "2026-06-18 17:35",
         "commit":  "c59d6fb",
         "changes":  [

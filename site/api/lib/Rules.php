@@ -12,10 +12,14 @@ declare(strict_types=1);
  */
 if (!function_exists('aero_add_months_clamped')) {
     /**
-     * $date + $months (positive) with END-OF-MONTH CLAMPING: the day of month is
-     * preserved but clamped to the target month's length, so Dec-31 + 9 months
-     * lands on Sep-30 — naive strtotime('+9 months') rolls the non-existent
-     * Sep-31 forward to Oct-1. Returns a midnight timestamp.
+     * $date + $months (positive) with MONTH-END SEMANTICS: fiscal-year-ends are
+     * month-ends and the single-audit deadline is the month-end $months out
+     * (2 CFR 200.512), so a Jun-30 FYE is due Mar 31 — NOT Mar 30, which naive
+     * day-of-month arithmetic gives (Jun has 30 days, Mar has 31). When the source
+     * date is its month's last day, the result snaps to the TARGET month's last
+     * day (Dec-31 -> Sep-30, Jun-30 -> Mar-31, Feb-29 -> Nov-30). Otherwise the
+     * day-of-month is preserved, clamped to the target month's length — a rare
+     * mid-month / 52-53-week FYE. Returns a midnight timestamp.
      */
     function aero_add_months_clamped(string $date, int $months): int
     {
@@ -24,7 +28,9 @@ if (!function_exists('aero_add_months_clamped')) {
         $m = (int) date('n', $e) + $months;
         $y += intdiv($m - 1, 12);
         $m = ($m - 1) % 12 + 1;
-        $d = min((int) date('j', $e), (int) date('t', mktime(0, 0, 0, $m, 1, $y)));
+        $targetLen = (int) date('t', mktime(0, 0, 0, $m, 1, $y));
+        $srcDay = (int) date('j', $e);
+        $d = $srcDay === (int) date('t', $e) ? $targetLen : min($srcDay, $targetLen);
         return mktime(0, 0, 0, $m, $d, $y);
     }
 

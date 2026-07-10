@@ -21,6 +21,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS schema_migrations;
 DROP TABLE IF EXISTS sync_log;
 DROP TABLE IF EXISTS state_uei;
+DROP TABLE IF EXISTS entity_related_uei;
 DROP TABLE IF EXISTS aero_score;
 DROP TABLE IF EXISTS sam_acquisition_subaward;
 DROP TABLE IF EXISTS sam_assistance_subaward;
@@ -550,9 +551,11 @@ CREATE TABLE usa_award (
   pop_congressional_code  VARCHAR(5)  NULL,
   pop_country_name        VARCHAR(100) NULL,
   last_synced             DATETIME    NULL,
+  outlay_synced           DATETIME    NULL,  -- last File C outlay-months pull for this award (see usa_award_outlay_month)
   PRIMARY KEY (award_id),
   KEY idx_usaaward_uei (recipient_uei),
   KEY idx_usaaward_category (category),
+  KEY idx_usaaward_outlaysync (outlay_synced),
   CONSTRAINT fk_usaaward_recipient FOREIGN KEY (recipient_uei)
       REFERENCES usa_recipient (uei) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -588,6 +591,22 @@ CREATE TABLE usa_award_txn_month (
   PRIMARY KEY (award_id, ym, cfda),
   KEY idx_txnmonth_cfda (cfda),
   CONSTRAINT fk_txnmonth_award FOREIGN KEY (award_id)
+      REFERENCES usa_award (award_id) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Per-award OUTLAYS summed by calendar month, reconstructed from File C (Account Breakdown by Award).
+-- Outlays are NOT transaction-level (USAspending exposes none per transaction); they exist only as
+-- account-level File C figures that are CUMULATIVE within the FEDERAL fiscal year and reset Oct 1.
+-- sync_usa_outlays.php pulls each award's /awards/{id}/funding/ rows, sums gross_outlay_amount by
+-- (federal FY, reporting period), differences consecutive periods within each FY to recover the
+-- calendar-month outlay, and stores that delta here — so the UI can bucket outlays into any fiscal
+-- year at view time (entity FYE or federal Sep-30), just like obligations. Deltas may be negative.
+CREATE TABLE usa_award_outlay_month (
+  award_id    VARCHAR(64)   NOT NULL,
+  ym          DATE          NOT NULL,              -- first day of the calendar month the outlay fell in
+  outlay      DECIMAL(18,2) NOT NULL,              -- gross outlay that calendar month (period-over-period delta; may be negative)
+  PRIMARY KEY (award_id, ym),
+  CONSTRAINT fk_outlaymonth_award FOREIGN KEY (award_id)
       REFERENCES usa_award (award_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -852,6 +871,22 @@ CREATE TABLE state_uei (
   PRIMARY KEY (state_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Curated component-UEI links: agencies that belong to a parent government's reporting
+-- entity but were never declared as additional UEIs on its SF-SAC (first case: Oklahoma —
+-- its FY2023 statewide SEFA names ~45 expending agencies; the SF-SAC said "No"). Feeds the
+-- MONEY surfaces only (usa_awards rollup, award/txn crawls, Entity Info Related UEIs);
+-- the evaluation reads state_uei (succession), and fac_additional_ueis stays a pure mirror
+-- of what the auditee filed — its emptiness is itself evidence.
+CREATE TABLE entity_related_uei (
+  uei         CHAR(12)     NOT NULL,                       -- parent entity (profile UEI)
+  related_uei CHAR(12)     NOT NULL,                       -- component agency UEI
+  source      VARCHAR(20)  NOT NULL DEFAULT 'curated',     -- provenance of the link
+  note        VARCHAR(255) NULL,
+  added_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (uei, related_uei),
+  KEY idx_eru_related (related_uei)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Migration ledger (apply_migrations.php locally; deploy.ps1 on prod). schema.sql
 -- already incorporates every migration listed below, so a fresh install seeds them
 -- as applied — the runner only ever applies files NOT in this list.
@@ -885,7 +920,8 @@ INSERT INTO schema_migrations (filename, applied_at) VALUES
   ('2026-06-17_drop_unused_indexes.sql', UTC_TIMESTAMP()),
   ('2026-06-17_entity_directory_columns.sql', UTC_TIMESTAMP()),
   ('2026-06-17_entity_addl_backfill.sql', UTC_TIMESTAMP()),
-  ('2026-06-17_usa_award_txn_month.sql', UTC_TIMESTAMP());
+  ('2026-06-17_usa_award_txn_month.sql', UTC_TIMESTAMP()),
+  ('2026-07-08_entity_related_uei.sql', UTC_TIMESTAMP());
 
 CREATE TABLE sync_log (
   id            BIGINT      NOT NULL AUTO_INCREMENT,

@@ -91,6 +91,27 @@ foreach (array_keys($keep) as $u) $ins->execute([$u]);
 $pdo->commit();
 echo "keep-set (HHS recipients + crosswalk UEIs): " . number_format(count($keep)) . "\n";
 
+// 1b) Rollup-family members of kept parents: additional UEIs declared on the parent's
+// SF-SAC + curated component links (entity_related_uei). Component agencies file FSRS
+// subawards under their OWN UEIs (e.g. PennDOT under the Commonwealth of PA); without
+// them here, a component's edges to non-HHS subs are dropped and the parent profile's
+// Passthrough tab undercounts. Scoped to KEPT parents so components of out-of-scope
+// auditees don't balloon the table.
+$pdo->exec(
+    "INSERT IGNORE INTO _edge_keep (uei)
+     SELECT DISTINCT UPPER(au.additional_uei) FROM fac_additional_ueis au
+     JOIN _edge_keep k ON k.uei = au.auditee_uei
+     WHERE au.additional_uei REGEXP '^[A-Za-z0-9]{12}$'"
+);
+$pdo->exec(
+    "INSERT IGNORE INTO _edge_keep (uei)
+     SELECT DISTINCT UPPER(er.related_uei) FROM entity_related_uei er
+     JOIN _edge_keep k ON k.uei = er.uei
+     WHERE er.related_uei REGEXP '^[A-Za-z0-9]{12}$'"
+);
+$keepTotal = (int) $pdo->query("SELECT COUNT(*) FROM _edge_keep")->fetchColumn();
+echo "keep-set incl. rollup-family members: " . number_format($keepTotal) . "\n";
+
 // 2) (Re)create the edge table fresh with the canonical schema (matches the migration).
 //    DROP+CREATE so a schema change (e.g. the year dimension) always takes locally; only
 //    runs local, and the prod copy is replaced wholesale by deploy.ps1 -PushTable anyway.
@@ -116,23 +137,42 @@ echo "aggregating edges (this scans the detail table — a minute or two)...\n";
 // year = subaward date, falling back to obligation/submission so every row gets a year
 // (the PK needs a non-null year). ALNs are concatenated per (pair, year) and split/deduped
 // downstream in the API.
+//
+// SANITATION (2026-07-08 — FSRS $ pollution made fleet-level sums nonsense):
+//   1. AMENDMENT DEDUPE — the same subaward appears once per report version; summing
+//      them multiplies the dollars. Keep only the LATEST version of each
+//      (prime_award_key, subaward_number); rows with no usable key stay themselves.
+//   2. PLAUSIBILITY — drop rows claiming a subaward LARGER than the prime award's own
+//      total funding (e.g. a $58B "subaward" to a community action agency). Rule only
+//      fires when total_fed_funding_amount is present and positive.
 $pdo->exec(
     "INSERT INTO subaward_edge
         (prime_entity_uei, sub_vendor_uei, year, prime_name, sub_name,
          subawards, total_amount, max_amount, alns)
-     SELECT s.prime_entity_uei, s.sub_vendor_uei,
-            YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date)) yr,
-            MAX(s.prime_entity_name), MAX(s.sub_vendor_name),
-            COUNT(*), SUM(s.subaward_amount), MAX(s.subaward_amount),
-            LEFT(GROUP_CONCAT(DISTINCT s.aln ORDER BY s.aln SEPARATOR ', '), 255)
-     FROM sam_assistance_subaward s
-     WHERE s.prime_entity_uei IS NOT NULL AND s.prime_entity_uei <> ''
-       AND s.sub_vendor_uei  IS NOT NULL AND s.sub_vendor_uei  <> ''
-       AND YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date))
-             BETWEEN 2022 AND YEAR(CURDATE())
-       AND (s.prime_entity_uei IN (SELECT uei FROM _edge_keep)
-         OR s.sub_vendor_uei  IN (SELECT uei FROM _edge_keep))
-     GROUP BY s.prime_entity_uei, s.sub_vendor_uei, yr"
+     SELECT t.prime_entity_uei, t.sub_vendor_uei, t.yr,
+            MAX(t.prime_entity_name), MAX(t.sub_vendor_name),
+            COUNT(*), SUM(t.subaward_amount), MAX(t.subaward_amount),
+            LEFT(GROUP_CONCAT(DISTINCT t.aln ORDER BY t.aln SEPARATOR ', '), 255)
+     FROM (
+        SELECT s.prime_entity_uei, s.sub_vendor_uei, s.prime_entity_name, s.sub_vendor_name,
+               s.subaward_amount, s.total_fed_funding_amount, s.aln,
+               YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date)) yr,
+               ROW_NUMBER() OVER (
+                   PARTITION BY COALESCE(NULLIF(s.prime_award_key,''), NULLIF(s.fain,''), CAST(s.id AS CHAR)),
+                                COALESCE(NULLIF(s.subaward_number,''), CAST(s.id AS CHAR))
+                   ORDER BY s.report_updated_date DESC, s.submitted_date DESC, s.id DESC) rn
+        FROM sam_assistance_subaward s
+        WHERE s.prime_entity_uei IS NOT NULL AND s.prime_entity_uei <> ''
+          AND s.sub_vendor_uei  IS NOT NULL AND s.sub_vendor_uei  <> ''
+          AND YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date))
+                BETWEEN 2022 AND YEAR(CURDATE())
+          AND (s.prime_entity_uei IN (SELECT uei FROM _edge_keep)
+            OR s.sub_vendor_uei  IN (SELECT uei FROM _edge_keep))
+     ) t
+     WHERE t.rn = 1
+       AND (t.total_fed_funding_amount IS NULL OR t.total_fed_funding_amount <= 0
+            OR t.subaward_amount <= t.total_fed_funding_amount)
+     GROUP BY t.prime_entity_uei, t.sub_vendor_uei, t.yr"
 );
 $pdo->exec("DROP TABLE IF EXISTS _edge_keep");
 

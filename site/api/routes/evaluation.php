@@ -43,9 +43,10 @@ foreach ($pdo->query("SELECT state_code, label, ueis FROM state_uei") as $r) {
     $set = array_values(array_filter(array_map('trim', preg_split('/\R+/', (string) $r['ueis']) ?: [])));
     array_push($sgUeis, ...$set);
     if (!in_array($type, $REGISTRY_TYPES, true)) continue;
-    // 'stategov' = the 50 states + DC; 'territory' = the registry's territory rows
+    // 'stategov' = ALL registry rows — 50 states + DC + US territories (territories rolled into
+    // State Govt per client 2026-07-07). 'territory' remains valid for old deep links only.
     $isTerr = in_array($r['state_code'], $TERRITORIES, true);
-    if ($type === 'stategov' ? $isTerr : !$isTerr) continue;
+    if ($type === 'territory' && !$isTerr) continue;
     if ($state !== null && $r['state_code'] !== $state) continue;
     if ($set) $groups[$r['state_code']] = ['state' => $r['state_code'], 'label' => $r['label'], 'ueis' => $set];
 }

@@ -5,21 +5,23 @@ declare(strict_types=1);
 final class Http
 {
     /** @return array{0:int,1:array<string,string>,2:mixed} [status, headers, decodedBody] */
-    public static function getJson(string $url, array $headers = []): array
+    public static function getJson(string $url, array $headers = [], int $tries = 4): array
     {
-        return self::request('GET', $url, $headers, null);
+        return self::request('GET', $url, $headers, null, $tries);
     }
 
-    /** @return array{0:int,1:array<string,string>,2:mixed} */
-    public static function postJson(string $url, array $body, array $headers = []): array
+    /** @return array{0:int,1:array<string,string>,2:mixed}
+     * $tries caps transient-failure retries (default 4). Pass a low value for high-fan-out, resumable
+     * crawls (e.g. the per-award File C outlay pull) where a stalled worker costs more than a deferred item. */
+    public static function postJson(string $url, array $body, array $headers = [], int $tries = 4): array
     {
         $headers[] = 'Content-Type: application/json';
-        return self::request('POST', $url, $headers, json_encode($body));
+        return self::request('POST', $url, $headers, json_encode($body), $tries);
     }
 
-    private static function request(string $method, string $url, array $headers, ?string $payload): array
+    private static function request(string $method, string $url, array $headers, ?string $payload, int $tries = 4): array
     {
-        $tries = 4;
+        $tries = max(1, $tries);
         $delay = 2;
         for ($attempt = 1; ; $attempt++) {
             $respHeaders = [];

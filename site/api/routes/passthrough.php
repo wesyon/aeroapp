@@ -24,9 +24,8 @@ $FLAG_MIN = 1000000;   // ≥$1M max subaward (2 CFR 200.501 threshold neighborh
 set_time_limit(180);
 $cacheFile = dirname(__DIR__) . '/cache/passthrough_' . ($year ?? 'latest') . '.json';
 if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < 3600) {
-    header('Content-Type: application/json; charset=utf-8');
-    echo file_get_contents($cacheFile);
-    exit;
+    $cached = cache_get($cacheFile);
+    if ($cached !== null) json_out($cached);   // else: torn/empty cache — fall through and recompute
 }
 
 // aero entity_type → the FSRS type VOCABULARY + Single-Audit applicability, so the fallback
@@ -237,5 +236,5 @@ $payload = [
     'top_subs'   => array_slice($subsAll, 0, 100),
     'top_primes' => $topPrimes,
 ];
-@file_put_contents($cacheFile, json_encode($payload));
+cache_put($cacheFile, $payload);
 json_out($payload);

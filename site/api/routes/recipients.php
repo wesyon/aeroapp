@@ -318,16 +318,15 @@ if ($rows) {
 // between data syncs, so cache to disk rather than re-run the DISTINCT scans (the
 // entity_type one is a full table scan) on every keystroke/search.
 $optsFile = dirname(__DIR__) . '/cache/recipient_opts.json';
-if (is_file($optsFile) && (time() - filemtime($optsFile)) < 21600) {
-    $opt = json_decode((string) file_get_contents($optsFile), true) ?: [];
+$opt = (is_file($optsFile) && (time() - filemtime($optsFile)) < 21600) ? cache_get($optsFile) : null;
+if ($opt !== null) {
     $types = $opt['entity_types'] ?? [];
     $states = $opt['states'] ?? [];
-} else {
+} else {   // missing, stale, or torn cache — recompute and rewrite
     $types  = $pdo->query("SELECT DISTINCT entity_type FROM entity WHERE latest_audit_year IS NOT NULL AND entity_type IS NOT NULL AND entity_type <> '' ORDER BY entity_type")->fetchAll(PDO::FETCH_COLUMN);
     array_unshift($types, 'State Govt', 'US Territories');  // synthetic facets from the crosswalk
     $states = $pdo->query("SELECT DISTINCT state FROM entity WHERE latest_audit_year IS NOT NULL AND state IS NOT NULL AND state <> '' ORDER BY state")->fetchAll(PDO::FETCH_COLUMN);
-    @mkdir(dirname($optsFile), 0775, true);
-    @file_put_contents($optsFile, json_encode(['entity_types' => $types, 'states' => $states]));
+    cache_put($optsFile, ['entity_types' => $types, 'states' => $states]);
 }
 
 json_out([

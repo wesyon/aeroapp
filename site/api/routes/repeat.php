@@ -30,11 +30,12 @@ if (!in_array($type, $REGISTRY_TYPES, true) && !in_array($type, $ENTITY_TYPES, t
 // so old caches are simply not read (rather than mixing old/new fields in the UI).
 require_once dirname(__DIR__) . '/lib/Lineage.php';
 
-$CACHE_VER = 'v5';   // v5 = trace split: before_window (trace ends) vs unresolved_ref (chain break)
+$CACHE_VER = 'v6';   // v6 = stategov now includes territory govts (reconciles with Evaluation); v5 = trace split
 $cacheFile = dirname(__DIR__) . "/cache/repeat_{$CACHE_VER}_" . $type . '_' . ($state ?? 'all') . '.json';
 $fresh = isset($_GET['fresh']) && is_local_request();
 if (!$fresh && is_file($cacheFile) && (time() - filemtime($cacheFile)) < 21600) {
-    json_out(json_decode((string) file_get_contents($cacheFile), true));
+    $cached = cache_get($cacheFile);
+    if ($cached !== null) json_out($cached);   // else: torn/empty cache — fall through and recompute
 }
 
 $CAP = 500;
@@ -47,8 +48,11 @@ foreach ($pdo->query("SELECT state_code, label, ueis FROM state_uei") as $r) {
     $set = array_values(array_filter(array_map('trim', preg_split('/\R+/', (string) $r['ueis']) ?: [])));
     array_push($sgUeis, ...$set);
     if (!in_array($type, $REGISTRY_TYPES, true)) continue;
+    // 'stategov' = ALL registry rows (50 states + DC + US territories, rolled into State Govt
+    // per client 2026-07-07); 'territory' = territories only. Matches /api/evaluation so the two
+    // dashboards reconcile (previously stategov here wrongly EXCLUDED the 5 territory governments).
     $isTerr = in_array($r['state_code'], $TERRITORIES, true);
-    if ($type === 'stategov' ? $isTerr : !$isTerr) continue;
+    if ($type === 'territory' && !$isTerr) continue;
     if ($state !== null && $r['state_code'] !== $state) continue;
     if ($set) $groups[$r['state_code']] = ['state' => $r['state_code'], 'label' => $r['label'], 'ueis' => $set];
 }
@@ -286,6 +290,5 @@ $out = [
     'overview' => $overview, 'persistent' => $persistent,
     'by_requirement' => $byRequirement, 'by_program' => $byProgram, 'findings' => $findingsOut,
 ];
-@mkdir(dirname($cacheFile), 0775, true);
-@file_put_contents($cacheFile, json_encode($out));
+cache_put($cacheFile, $out);
 json_out($out);

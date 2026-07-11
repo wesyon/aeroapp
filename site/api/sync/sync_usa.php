@@ -182,6 +182,10 @@ foreach ($ueis as $uei) {
     if (isset($recent[$uei])) { $done++; continue; }
     try {
         $up->insert('usa_recipient', ['uei' => $uei]);   // ensure FK target exists (last_synced set at end)
+        // Replace this recipient's awards atomically: a mid-recipient failure (a throwing award
+        // group, a dropped connection) otherwise auto-commits the DELETE and leaves partial/zero
+        // awards — wrong obligation totals until the next --oldest cycle re-pulls it. Roll back instead.
+        $pdo->beginTransaction();
         $delAwards->execute([$uei]);
         $name = null;
         $truncated = false;
@@ -250,8 +254,10 @@ foreach ($ueis as $uei) {
         }
         $markDone->execute([$name, $truncated ? 1 : 0, $uei]); // mark synced only after all groups succeeded
         $markUsa->execute([$uei]);
+        $pdo->commit();
         usleep(500000); // gentle pacing to avoid USAspending throttling
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();   // keep the recipient's prior awards intact
         fwrite(STDERR, "  $uei error: " . substr($e->getMessage(), 0, 80) . "\n");
     }
     // Checkpoint often (every 25 UEIs OR 30s), not every 200: the 28-min host reaper often kills a

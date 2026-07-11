@@ -11,6 +11,7 @@ declare(strict_types=1);
 require __DIR__ . '/lib/Env.php';
 require __DIR__ . '/lib/Db.php';
 require __DIR__ . '/lib/Rules.php';   // shared deadline/lineage helpers used by routes
+require __DIR__ . '/lib/Cache.php';   // atomic, UTF-8-safe disk cache (cache_put/cache_get)
 // Prefer a .env ABOVE the web root (not servable even if .htaccess is ignored); fall
 // back to one alongside api/. Env::load keeps the first value set, so above-root wins.
 Env::load(dirname(__DIR__, 2) . '/.env');
@@ -68,16 +69,23 @@ function q_int(string $k, int $default, int $min, int $max): int
 
 /**
  * Is this request from the local console (dev, or a Cloudflare-tunnelled localhost)?
- * The admin console, crosswalk writes, and cache-busting are restricted to it.
- * Setting APP_ENV=prod in the server .env hard-disables them regardless of source IP,
- * so a misread REMOTE_ADDR behind a proxy can never re-enable the write surface.
+ * The admin console, crosswalk writes, the signals console, and cache-busting (?fresh)
+ * are restricted to it.
+ *
+ * FAIL-CLOSED on APP_ENV: the write/admin surface is enabled ONLY when APP_ENV explicitly
+ * names a dev environment ('local' or 'dev'). Any other value — 'prod', blank, unset, a
+ * typo, or a failed .env load — locks it, regardless of source IP. This matters once a
+ * same-host reverse proxy (a gov load balancer, a Cloudflare tunnel) forwards over loopback
+ * and REMOTE_ADDR reads as 127.0.0.1 for every request: a missing or misspelled env var can
+ * then never re-open the surface. Local dev therefore REQUIRES APP_ENV=local (see .env.example).
  */
 function is_local_request(): bool
 {
-    if (strtolower((string) Env::get('APP_ENV', '')) === 'prod') {
+    $env = strtolower((string) Env::get('APP_ENV', ''));
+    if ($env !== 'local' && $env !== 'dev') {
         return false;
     }
-    return in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1', 'localhost'], true);
+    return in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
 }
 
 /**

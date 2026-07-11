@@ -25,10 +25,12 @@ if (!in_array($type, $REGISTRY_TYPES, true) && !in_array($type, $ENTITY_TYPES, t
 $isAgg = !in_array($type, $REGISTRY_TYPES, true) && q_str('agg') === 'states';
 
 // $type is whitelisted and $state regex-validated above, so both are filename-safe
-$cacheFile = dirname(__DIR__) . '/cache/evaluation_' . $type . '_' . ($state ?? 'all') . ($isAgg ? '_agg' : '') . '.json';
+$CACHE_VER = 'v2';   // v2 = L1 reconciled with grantee (activity confirmation + fac_general proxy)
+$cacheFile = dirname(__DIR__) . '/cache/evaluation_' . $CACHE_VER . '_' . $type . '_' . ($state ?? 'all') . ($isAgg ? '_agg' : '') . '.json';
 $fresh = isset($_GET['fresh']) && is_local_request();
 if (!$fresh && is_file($cacheFile) && (time() - filemtime($cacheFile)) < 21600) {
-    json_out(json_decode((string) file_get_contents($cacheFile), true));
+    $cached = cache_get($cacheFile);
+    if ($cached !== null) json_out($cached);   // else: torn/empty cache — fall through and recompute
 }
 
 $CAP = 500;   // non-stategov scopes: riskiest N entities (by composite score)
@@ -76,8 +78,7 @@ if (!in_array($type, $REGISTRY_TYPES, true)) {
             $agg[$r['state']] = ['n' => (int) $r['n'], 'high' => (int) $r['high'], 'avg_score' => (float) $r['avg_score']];
         }
         $out = ['agg' => $agg, 'type' => $type, 'generated_at' => date('c')];
-        @mkdir(dirname($cacheFile), 0775, true);
-        @file_put_contents($cacheFile, json_encode($out));
+        cache_put($cacheFile, $out);
         json_out($out);
     }
 
@@ -117,14 +118,40 @@ $filings = [];                                  // uei => year => [fy, orig, bi]
 foreach ($st as $r) $filings[$r['uei']][(int) $r['yr']] = ['fy' => $r['fy'], 'orig' => $r['orig'], 'bi' => (int) $r['bi'] === 1];
 
 // (B) active reports per uei (resubmission-deduped; lineage + latest-audit scope)
-$st = $pdo->prepare("SELECT auditee_uei uei, report_id, audit_year yr, auditor_firm_name firm FROM fac_general WHERE auditee_uei IN ($in) AND is_active = 1");
+$st = $pdo->prepare("SELECT auditee_uei uei, report_id, audit_year yr, auditor_firm_name firm, total_amount_expended exp FROM fac_general WHERE auditee_uei IN ($in) AND is_active = 1");
 $st->execute($all);
 $activeRep = [];                                // uei => report_id => year
 $repFirm = [];                                  // report_id => audit firm
+$repExp = [];                                   // report_id => total_amount_expended (authoritative proxy source, not aero_score)
 foreach ($st as $r) {
     $activeRep[$r['uei']][$r['report_id']] = (int) $r['yr'];
+    $repExp[$r['report_id']] = (float) ($r['exp'] ?? 0);
     if ($r['firm'] !== null && trim((string) $r['firm']) !== '') $repFirm[$r['report_id']] = trim((string) $r['firm']);
 }
+
+// (B2) Level-1 award-activity signals for the whole cohort — direct-award periods (usa_award)
+// and FSRS pass-through subaward years (subaward_edge), the SAME confirmation /api/grantee uses,
+// batched here across the cohort instead of per entity. subaward_edge is a deploy-shipped
+// aggregate that may not exist yet -> degrade to no-subaward-signal (proxy/direct still apply).
+$directIntervals = [];   // uei => [[startTs, endTs], ...]
+$subYears = [];          // uei => [year => true]
+$NOW_TS = time(); $MIN_PLAUSIBLE = strtotime('1980-01-01');
+$st = $pdo->prepare(
+    "SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
+     WHERE recipient_uei IN ($in) AND category IN ('grant','direct_payment')
+       AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
+$st->execute($all);
+foreach ($st as $r) {
+    $s = strtotime((string) $r['s']); $e = strtotime((string) $r['e']);
+    if ($s === false || $e === false || $s < $MIN_PLAUSIBLE) continue;   // drop implausible start
+    if ($e > $NOW_TS) $e = $NOW_TS;                                      // clamp dirty future end
+    if ($e >= $s) $directIntervals[$r['uei']][] = [$s, $e];
+}
+try {
+    $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($in) GROUP BY sub_vendor_uei, year");
+    $st->execute($all);
+    foreach ($st as $r) $subYears[$r['uei']][(int) $r['year']] = true;
+} catch (\Throwable $e) { /* no edge table -> subaward confirmation unavailable; proxy + direct awards still apply */ }
 
 // (C) AERO scores (composite/tier for context; federal_latest gates missing-year
 // delinquency; trend powers the momentum view)
@@ -175,7 +202,7 @@ foreach ($groups as $g) {
         $cand = [$ly, (float) ($scores[$u]['federal_latest'] ?? 0)];
         if ($cand > $best) { $best = $cand; $uei = $u; }
     }
-    $f = []; $fBi = []; $reps = []; $fnd = []; $fedMax = 0.0;
+    $f = []; $fBi = []; $reps = []; $fnd = [];
     foreach ($g['ueis'] as $u) {
         foreach ($filings[$u] ?? [] as $yr => $x) {                            // per year keep the earliest original filing
             if (!isset($f[$yr]) || strtotime($x['orig']) < strtotime($f[$yr]['orig'])) $f[$yr] = $x;
@@ -183,13 +210,31 @@ foreach ($groups as $g) {
         }
         $reps += $activeRep[$u] ?? [];
         if (isset($findings[$u])) $fnd = array_merge($fnd, $findings[$u]);
-        $fedMax = max($fedMax, (float) ($scores[$u]['federal_latest'] ?? 0));
     }
+    // Authoritative proxy figure = the latest active report's expenditures (fac_general, like
+    // grantee.php), NOT aero_score.federal_latest — so a paused/stale score can't shift L1.
+    $federalLatest = 0.0; $flYear = -1;
+    foreach ($reps as $rid => $yr) {
+        if ($yr > $flYear || ($yr === $flYear && (float) ($repExp[$rid] ?? 0) > $federalLatest)) {
+            $flYear = $yr; $federalLatest = (float) ($repExp[$rid] ?? 0);
+        }
+    }
+    // Per-group award-activity confirmation over the merged UEI set (mirrors grantee.php's $confirmActivity).
+    $grpIntervals = []; $grpSubYears = [];
+    foreach ($g['ueis'] as $u) {
+        foreach ($directIntervals[$u] ?? [] as $iv) $grpIntervals[] = $iv;
+        foreach ($subYears[$u] ?? [] as $yy => $_unused) $grpSubYears[$yy] = true;
+    }
+    $confirmActivity = function ($fyStartTs, $fyEndTs) use ($grpIntervals, $grpSubYears) {
+        foreach ($grpIntervals as [$s, $e]) { if ($s <= $fyEndTs && $e >= $fyStartTs) return 'award'; }
+        $lo = (int) date('Y', $fyStartTs) - 2; $hi = (int) date('Y', $fyEndTs);   // 2yr pass-through lookback
+        foreach ($grpSubYears as $yy => $_unused) { if ($yy >= $lo && $yy <= $hi) return 'subaward'; }
+        return null;
+    };
 
     // Level 1 — NOT-FILED (missing & overdue) years only; late-filed years are tallied
     // and emitted as reference but no longer trigger the level (grantee.php matches).
     $late = 0; $missing = 0; $unverified = 0; $missingYrs = [];
-    $likely = $fedMax >= 2000000;                                              // ~2x the FY25 $1M threshold
     if ($f) {
         foreach ($f as $x) {
             if ((strtotime($x['orig']) - $dl9($x['fy'])) / 86400 > 0) $late++;
@@ -200,9 +245,10 @@ foreach ($groups as $g) {
         for ($y = min(array_keys($f)) + 1; $y <= (int) date('Y'); $y++) {
             if (isset($f[$y])) continue;
             if (aero_biennial_covered($y, $fBi, $lastYr)) continue;            // inside a biennial period
-            $fyEnd = date('Y-m-d', mktime(0, 0, 0, $fm, $fd, $y));
-            if ($dl9($fyEnd) >= time()) break;                                 // trailing edge: not yet due
-            if ($likely) { $missing++; $missingYrs[] = $y; }
+            $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y);
+            if ($dl9(date('Y-m-d', $fyEndTs)) >= time()) break;                // trailing edge: not yet due
+            $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);
+            if (aero_l1_confirmed_by($src, $federalLatest) !== null) { $missing++; $missingYrs[] = $y; }
             else $unverified++;
         }
     }
@@ -222,9 +268,12 @@ foreach ($groups as $g) {
         // covered before the pre-history 'na': a biennial's prior FY can precede $minY
         if (aero_biennial_covered($y, $fBi, $lastYr)) { $filingYears[$y] = ['st' => 'covered']; continue; }
         if ($y < $minY) { $filingYears[$y] = ['st' => 'na']; continue; }
-        $fyEnd = date('Y-m-d', mktime(0, 0, 0, $fm, $fd, $y));
-        if ($dl9($fyEnd) >= time()) $filingYears[$y] = ['st' => 'pending'];
-        else $filingYears[$y] = ['st' => $likely ? 'missing' : 'unverified'];
+        $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y);
+        if ($dl9(date('Y-m-d', $fyEndTs)) >= time()) $filingYears[$y] = ['st' => 'pending'];
+        else {
+            $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);
+            $filingYears[$y] = ['st' => aero_l1_confirmed_by($src, $federalLatest) !== null ? 'missing' : 'unverified'];
+        }
     }
 
     // Levels 2–7 — latest active audit only (flags, QC dollars, repeat lineage)
@@ -385,6 +434,5 @@ usort($rows, fn ($a, $b) => [$a['top_level'] ?? 99, -($a['score'] ?? 0)] <=> [$b
 
 $out = ['states' => $rows, 'programs' => $programs,
         'type' => $type, 'total' => $total ?? count($rows), 'capped' => $capped, 'generated_at' => date('c')];
-@mkdir(dirname($cacheFile), 0775, true);
-@file_put_contents($cacheFile, json_encode($out));
+cache_put($cacheFile, $out);
 json_out($out);

@@ -62,6 +62,25 @@ if (!function_exists('aero_add_months_clamped')) {
     }
 
     /**
+     * Level-1 (missing-audit delinquency) decision for ONE missing-and-overdue fiscal year,
+     * shared by /api/grantee (profile) and /api/evaluation (dashboard) so the two reconcile.
+     * A missing year counts — returning its reason label — when federal award ACTIVITY confirms
+     * the recipient was still active that FY (a direct-award period overlap or an FSRS pass-through
+     * subaward, passed in as $activitySrc = 'award'|'subaward'), OR, failing that, when the
+     * expenditure PROXY fires (latest filed federal expenditures >= ~2x the $1M single-audit
+     * threshold). Returns null when neither holds — the year is overdue but unconfirmed (a caveated
+     * "verify", not counted). $federalLatest MUST come from the authoritative FAC filing
+     * (fac_general.total_amount_expended), not aero_score, so a paused/stale score can't shift it.
+     */
+    function aero_l1_confirmed_by(?string $activitySrc, float $federalLatest, int $proxyThreshold = 2000000): ?string
+    {
+        if ($activitySrc !== null && $activitySrc !== '') {
+            return $activitySrc;
+        }
+        return $federalLatest >= $proxyThreshold ? 'proxy' : null;
+    }
+
+    /**
      * First prior-finding reference from FAC's free-text prior_finding_ref_numbers
      * (comma- or semicolon-separated list; blanks and 'N/A' -> ''). The repeat-
      * lineage walks hop through this single first reference per finding.

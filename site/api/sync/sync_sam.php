@@ -274,23 +274,6 @@ function seed_entities_extract(PDO $pdo, Upserter $up, array $args): void
         $errs ? "  ($errs skipped: " . substr((string) $firstErr, 0, 70) . ')' : '');
     printf("  classification from extract: %d entities enriched (%d structure, %d business types, %d NAICS)%s\n",
         $nEnt, $nStruct, $nBt, $nNaics, count($hasDetail) ? '  [' . count($hasDetail) . ' kept API detail]' : '');
-
-    // Superseded extracts otherwise accumulate forever (~520MB/month on the shared
-    // host). Keep only the .dat just loaded — it's find_entity_extract's <25-day cache.
-    prune_extracts('SAM_PUBLIC_MONTHLY_*.dat', $dat);
-    prune_extracts('entity_extract.zip');
-}
-
-/** Delete staged files matching $pattern in csv/sam, sparing $keep. Called only
- *  after a successful load, so a failed parse keeps its input for diagnosis. */
-function prune_extracts(string $pattern, ?string $keep = null): void
-{
-    $dir  = dirname(__DIR__, 2) . '/csv/sam';
-    $keep = $keep !== null ? realpath($keep) : false;
-    foreach (glob("$dir/$pattern") ?: [] as $f) {
-        if ($keep !== false && realpath($f) === $keep) continue;
-        @unlink($f);
-    }
 }
 
 /** Locate a FRESH staged entity .dat (newest, under 25 days — the extract is
@@ -389,11 +372,6 @@ function seed_exclusions_extract(PDO $pdo, Upserter $up, array $args): void
     sam_log($pdo, 'sam_exclusion', $rows, $errs, $firstErr, $start);
     printf("  sam_exclusion %6d records (official extract)%s\n", $rows,
         $errs ? "  ($errs skipped: " . substr((string) $firstErr, 0, 80) . ')' : '');
-
-    // Nothing staged needs to persist — this loader re-downloads every run
-    // (weekly CSVs are ~75MB each). A manually staged --file is caller-owned.
-    prune_extracts('SAM_Exclusions_Public_Extract_*', isset($args['file']) ? (string) $args['file'] : null);
-    prune_extracts('exclusions_extract.zip');
 }
 
 /** Pull the Exclusions Public Extract ZIP via the Extracts API, unzip, return CSV path. */

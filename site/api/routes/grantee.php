@@ -492,7 +492,6 @@ if ($lastFy !== null) {                                                         
     //       informative (consolidated audit UEIs don't align to award UEIs, the $30k FSRS
     //       floor, prime underreporting, pass-through invisibility), so it never REMOVES a
     //       year the proxy would count. Otherwise -> caveated "verify" flag, not counted.
-    $proxyRequired = (float) ($federalLatest ?? 0) >= 2000000;     // ~2x the FY25 $1M threshold (authoritative, not the score row)
     $fm = (int) date('n', strtotime($lastFy)); $fd = (int) date('j', strtotime($lastFy));
 
     // Pull the award-activity signals once, clamping the dirty dates seen in both feeds
@@ -541,10 +540,10 @@ if ($lastFy !== null) {                                                         
         $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y); $fyEnd = date('Y-m-d', $fyEndTs);
         if ($dl9($fyEnd) >= time()) break;                                        // trailing edge: not yet due
         $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);     // ~1yr FY window
-        if ($src !== null) {                                                      // confirmed by federal activity
-            $delinqMissing++; $delinqYears[] = ['year' => $y, 'status' => 'missing', 'confirmed_by' => $src];
-        } elseif ($proxyRequired) {                                              // fall back to the expenditure proxy
-            $delinqMissing++; $delinqYears[] = ['year' => $y, 'status' => 'missing', 'confirmed_by' => 'proxy'];
+        // shared Level-1 decision (lib/Rules.php) — the same rule /api/evaluation uses
+        $cb = aero_l1_confirmed_by($src, (float) ($federalLatest ?? 0));
+        if ($cb !== null) {                                                       // activity- or proxy-confirmed
+            $delinqMissing++; $delinqYears[] = ['year' => $y, 'status' => 'missing', 'confirmed_by' => $cb];
         } else {
             $delinqMissingUnverified++;                                          // overdue but unconfirmed -> verify
         }

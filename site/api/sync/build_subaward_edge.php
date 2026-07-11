@@ -129,7 +129,13 @@ $pdo->exec(
         max_amount       DECIMAL(18,2) NULL,
         alns             VARCHAR(255)  NULL,
         PRIMARY KEY (prime_entity_uei, sub_vendor_uei, year),
-        KEY idx_subedge_sub (sub_vendor_uei)
+        KEY idx_subedge_sub (sub_vendor_uei),
+        -- passthrough filters every query by year; this covers WHERE year=? plus the
+        -- sub-direction GROUP BY sub_vendor_uei with no filesort. One index (not two): the
+        -- prime-direction queries ORDER BY total DESC, so they filesort regardless — a
+        -- (year, prime_entity_uei) index would earn nothing while costing ~9.5 MB on a
+        -- quota-tight host. This index alone still turns their full scan into a year seek.
+        KEY idx_subedge_year_sub (year, sub_vendor_uei)
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
 );
 

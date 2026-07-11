@@ -160,6 +160,24 @@ $rowStmt = $pdo->prepare(
      LIMIT $rowLimit"
 );
 
+// Run the (capped) row query up front so the per-award month/outlay/program-grouping fetches
+// below scope to just the awards actually shown — not every award in the rollup family. State
+// rollups have tens of thousands of awards; fetching all their months then discarding all but the
+// shown ~1,000 was the bottleneck. ($programMonths, the per-ALN aggregate, still spans the family.)
+$rowStmt->execute($qset);
+$rawRows  = $rowStmt->fetchAll();
+$shownIds = array_values(array_unique(array_column($rawRows, 'award_id')));
+// award_id IN (...) fetch, chunked to stay under the 65,535 bound-param limit at ?all=1 scale.
+$byAwardIds = function (string $sql, array $ids) use ($pdo): array {
+    $out = [];
+    foreach (array_chunk($ids, 1000) as $chunk) {
+        $st = $pdo->prepare(str_replace('{IN}', implode(',', array_fill(0, count($chunk), '?')), $sql));
+        $st->execute($chunk);
+        foreach ($st as $r) $out[] = $r;
+    }
+    return $out;
+};
+
 // Per-award transaction months (action-date obligations). Wrapped: a deployment without
 // usa_award_txn_month degrades to the base-date 'fy' above.
 $monthsByAward = [];
@@ -167,16 +185,22 @@ $programMonths = [];   // cfda => [[YYYY-MM, obligation], …]  (Comparative vie
 $cfdaTitles = [];
 $dominantCfda = [];    // award_id => its most-obligated ALN, for award-level program grouping
 try {
-    // per-award months (sum across CFDA) for the award-level FY split
-    $mStmt = $pdo->prepare(
-        "SELECT m.award_id, DATE_FORMAT(m.ym, '%Y-%m') ym, SUM(m.obligation) obligation
-         FROM usa_award_txn_month m JOIN usa_award a ON a.award_id = m.award_id
-         WHERE a.recipient_uei IN ($IN) GROUP BY m.award_id, m.ym"
-    );
-    $mStmt->execute($qset);
-    foreach ($mStmt as $r) $monthsByAward[$r['award_id']][] = [$r['ym'], (float) $r['obligation']];
+    // per-award months (sum across CFDA) + dominant ALN — SHOWN awards only (keyed by award_id)
+    if ($shownIds) {
+        foreach ($byAwardIds("SELECT award_id, DATE_FORMAT(ym,'%Y-%m') ym, SUM(obligation) obligation
+                              FROM usa_award_txn_month WHERE award_id IN ({IN}) GROUP BY award_id, ym", $shownIds) as $r) {
+            $monthsByAward[$r['award_id']][] = [$r['ym'], (float) $r['obligation']];
+        }
+        $bestObl = [];
+        foreach ($byAwardIds("SELECT award_id, cfda, SUM(obligation) o
+                              FROM usa_award_txn_month WHERE award_id IN ({IN}) AND cfda <> '' GROUP BY award_id, cfda", $shownIds) as $r) {
+            $aw = $r['award_id']; $o = (float) $r['o'];
+            if (!isset($bestObl[$aw]) || $o > $bestObl[$aw]) { $bestObl[$aw] = $o; $dominantCfda[$aw] = $r['cfda']; }
+        }
+    }
 
-    // per-PROGRAM months, keyed by the transaction's own CFDA (accurate; no multi-ALN guessing)
+    // per-PROGRAM months, keyed by the transaction's own CFDA — spans the FULL rollup family
+    // (the Comparative program view is an aggregate, not limited to the shown award rows)
     $pmStmt = $pdo->prepare(
         "SELECT m.cfda, DATE_FORMAT(m.ym, '%Y-%m') ym, SUM(m.obligation) obligation
          FROM usa_award_txn_month m JOIN usa_award a ON a.award_id = m.award_id
@@ -184,19 +208,6 @@ try {
     );
     $pmStmt->execute($qset);
     foreach ($pmStmt as $r) $programMonths[$r['cfda']][] = [$r['ym'], (float) $r['obligation']];
-
-    // per-award dominant ALN (the CFDA with the most obligation) — for award-level program grouping
-    $acStmt = $pdo->prepare(
-        "SELECT m.award_id, m.cfda, SUM(m.obligation) o
-         FROM usa_award_txn_month m JOIN usa_award a ON a.award_id = m.award_id
-         WHERE a.recipient_uei IN ($IN) AND m.cfda <> '' GROUP BY m.award_id, m.cfda"
-    );
-    $acStmt->execute($qset);
-    $bestObl = [];
-    foreach ($acStmt as $r) {
-        $aw = $r['award_id']; $o = (float) $r['o'];
-        if (!isset($bestObl[$aw]) || $o > $bestObl[$aw]) { $bestObl[$aw] = $o; $dominantCfda[$aw] = $r['cfda']; }
-    }
 } catch (\PDOException $e) {
     error_log('usa_awards: txn-month split unavailable: ' . $e->getMessage());
 }
@@ -205,16 +216,15 @@ try {
 // so the UI can split outlays across fiscal years exactly like obligations. Wrapped: a deployment
 // without usa_award_outlay_month degrades to the award-lifetime total_outlay (still returned below).
 $outlaysByAward = [];
-try {
-    $oStmt = $pdo->prepare(
-        "SELECT m.award_id, DATE_FORMAT(m.ym, '%Y-%m') ym, m.outlay
-         FROM usa_award_outlay_month m JOIN usa_award a ON a.award_id = m.award_id
-         WHERE a.recipient_uei IN ($IN)"
-    );
-    $oStmt->execute($qset);
-    foreach ($oStmt as $r) $outlaysByAward[$r['award_id']][] = [$r['ym'], (float) $r['outlay']];
-} catch (\PDOException $e) {
-    error_log('usa_awards: outlay-month split unavailable: ' . $e->getMessage());
+if ($shownIds) {
+    try {
+        foreach ($byAwardIds("SELECT award_id, DATE_FORMAT(ym,'%Y-%m') ym, outlay
+                              FROM usa_award_outlay_month WHERE award_id IN ({IN})", $shownIds) as $r) {
+            $outlaysByAward[$r['award_id']][] = [$r['ym'], (float) $r['outlay']];
+        }
+    } catch (\PDOException $e) {
+        error_log('usa_awards: outlay-month split unavailable: ' . $e->getMessage());
+    }
 }
 
 // Program titles from assistance_listing — the app-wide federal program catalog (ALN -> name),
@@ -262,9 +272,8 @@ try {
     foreach ($sStmt as $r) $sefa[$r['aln']][(int) $r['audit_year']] = (float) $r['exp'];
 } catch (\PDOException $e) { /* SEFA optional — tab degrades to obligations-only */ }
 
-$rowStmt->execute($qset);
 $rows = [];
-foreach ($rowStmt as $r) {
+foreach ($rawRows as $r) {
     $rows[] = [
         'recipient_uei'   => $r['recipient_uei'],
         'recipient_name'  => $r['recipient_name'],

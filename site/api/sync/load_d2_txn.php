@@ -123,10 +123,9 @@ if ($newAwd < $oldAwd * 0.9) {
 }
 $pdo->exec("DROP TABLE IF EXISTS usa_award_txn_month_old");
 $pdo->exec("RENAME TABLE usa_award_txn_month TO usa_award_txn_month_old, usa_award_txn_month_new TO usa_award_txn_month");
-try {
-    $pdo->exec("ALTER TABLE usa_award_txn_month ADD CONSTRAINT fk_txnmonth_award "
-        . "FOREIGN KEY (award_id) REFERENCES usa_award(award_id) ON UPDATE CASCADE ON DELETE CASCADE");
-    echo "FK re-added.\n";
-} catch (Throwable $e) { fwrite(STDERR, 'FK re-add skipped: ' . $e->getMessage() . "\n"); }
+// Intentionally do NOT re-add an FK to usa_award: an ON DELETE CASCADE here let sync_usa.php's
+// per-recipient DELETE+reinsert wipe obligation months nightly (see 2026-07-10_txn_month_drop_fk.sql,
+// mirroring the outlay-month fix). CREATE TABLE ... LIKE does not copy FKs, so the swapped-in table
+// is already FK-free — every reader joins through usa_award, so orphaned month rows are harmless.
 echo "SWAPPED. Prior data kept as usa_award_txn_month_old (rollback); raw stage kept as d2_txn_stage.\n";
 echo "DONE  [" . (time() - $t0) . "s]\n";

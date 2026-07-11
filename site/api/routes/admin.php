@@ -34,7 +34,7 @@ function coverage_cached(PDO $pdo, string $key, string $sql, int $ttl = 60): ?ar
     }
     if (!$row || $row['t'] === null) return null;
     $res = ['d' => (int) $row['d'], 't' => (int) $row['t']];
-    @file_put_contents($file, json_encode($res), LOCK_EX);
+    cache_put($file, $res);
     return $res;
 }
 
@@ -151,8 +151,13 @@ $SOURCES = [
           'unit' => 'awards', 'requires' => 'usa_award_outlay_month',
           'blurb' => 'Awards whose outlays are split into File C fiscal months (vs all non-loan awards with a lifetime outlay). FY2021–2025 was bulk-built locally and shipped via -PushTable; awards without monthly detail fall back to their lifetime figure on the tabs (award-level A tag).',
           'why' => 'The FY-split outlay source for the entity tabs. Not expected to reach 100%: pre-FY2021 outlays never appear in FY2021+ File C files, and some File C rows are unlinked on the USAspending side.',
-          'cov_ttl' => 900,   // DISTINCT over the multi-million-row month table — never on the hot path
-          'coverage' => "SELECT (SELECT COUNT(DISTINCT m.award_id) FROM usa_award_outlay_month m) d,
+          'cov_ttl' => 900,   // EXISTS probe per eligible award — never on the hot path
+          // done = eligible awards THAT HAVE month rows (EXISTS, same universe as the total).
+          // Counting DISTINCT award_ids in the table instead read 128% on prod: the pushed table
+          // carries orphan rows for awards outside prod's HHS-scoped usa_award (harmless to the
+          // app — every reader joins through usa_award — but not "coverage").
+          'coverage' => "SELECT (SELECT COUNT(*) FROM usa_award a WHERE a.category <> 'loan' AND COALESCE(a.total_outlay,0) <> 0
+                                   AND EXISTS(SELECT 1 FROM usa_award_outlay_month m WHERE m.award_id = a.award_id)) d,
                                 (SELECT COUNT(*) FROM usa_award WHERE category <> 'loan' AND COALESCE(total_outlay,0) <> 0) t"],
          // LOCAL-ONLY twin of the bar above: live staging progress of the File C bulk matrix
          // itself (usa_outlay_dl_log exists only where the build runs). One slice = one
@@ -398,7 +403,7 @@ $rowCount = function (string $t, int $estimate) use ($pdo, &$countCache, $countC
               try { return $pdo->query("SELECT COUNT(*) FROM `$t`")->fetchColumn(); } catch (Throwable $e) { return $estimate; }
           })();
     $countCache[$t] = $n;
-    @file_put_contents($countCacheFile, json_encode($countCache), LOCK_EX);
+    cache_put($countCacheFile, $countCache);
     return $n;
 };
 
@@ -485,9 +490,8 @@ if ($action === 'dictionary') {
 // per window; every other poll is instant. Slight staleness is fine for a status page.
 $statusCache = dirname(__DIR__) . '/cache/admin_status.json';
 if (is_file($statusCache) && (time() - filemtime($statusCache)) < 25) {
-    header('Content-Type: application/json; charset=utf-8');
-    echo file_get_contents($statusCache);
-    exit;
+    $cached = cache_get($statusCache);
+    if ($cached !== null) json_out($cached);   // else: torn/empty cache — fall through and recompute
 }
 $rows = [];
 foreach ($pdo->query("SELECT TABLE_NAME AS tn, TABLE_ROWS AS tr FROM information_schema.tables WHERE table_schema = DATABASE()") as $r) {
@@ -1025,5 +1029,5 @@ $statusPayload = [
     'total_rows'   => array_sum(array_column($out, 'total_rows')),
     'generated_at' => date('c'),
 ];
-@file_put_contents($statusCache, json_encode($statusPayload));
+cache_put($statusCache, $statusPayload);
 json_out($statusPayload);

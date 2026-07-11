@@ -14,7 +14,8 @@ $hhsOnly = isset($_GET['hhs']) && $_GET['hhs'];
 $cacheFile = dirname(__DIR__) . '/cache/dashboard' . ($hhsOnly ? '_hhs' : '') . '.json';
 $fresh = isset($_GET['fresh']) && is_local_request();
 if (!$fresh && is_file($cacheFile) && (time() - filemtime($cacheFile)) < 21600) {
-    json_out(json_decode((string) file_get_contents($cacheFile), true));
+    $cached = cache_get($cacheFile);
+    if ($cached !== null) json_out($cached);   // else: torn/empty cache — fall through and recompute
 }
 
 $QC_TRUSTED = "'known','generic','flagged','inline'";
@@ -142,6 +143,5 @@ $out['kpis'] = [
 $out['scope'] = $hhsOnly ? 'hhs' : 'all';
 $out['generated_at'] = date('c');
 
-@mkdir(dirname($cacheFile), 0775, true);
-@file_put_contents($cacheFile, json_encode($out));
+cache_put($cacheFile, $out);
 json_out($out);

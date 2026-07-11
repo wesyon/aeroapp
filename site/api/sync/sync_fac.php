@@ -338,7 +338,31 @@ $bakTables = array_column($TABLES, 1);
 $dropBaks = function () use (&$pdo, $bakTables) {   // &$pdo: survives a reconnect
     foreach ($bakTables as $t) $pdo->exec("DROP TABLE IF EXISTS `_bak_$t`");
 };
+// Restore in-scope rows from the _bak_ snapshot — used by the catch below AND before taking a new
+// snapshot when a prior run left _bak_ behind. Skips tables whose backup is missing. &$pdo survives
+// a reconnect (a dead connection is re-established before restore runs).
+$restoreFromBak = function () use (&$pdo, $bakTables, $scopeSql) {
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    foreach ($bakTables as $t) {
+        if ($pdo->query("SHOW TABLES LIKE '_bak_$t'")->fetchColumn() === false) continue;
+        $pdo->exec("DELETE FROM `$t` WHERE $scopeSql");
+        $pdo->exec("INSERT INTO `$t` SELECT * FROM `_bak_$t`");
+    }
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+};
 if ($safe) {
+    // _bak_ tables present at the START of a run mean the PREVIOUS --safe run died mid-reload (an
+    // uncatchable ~28-min reap — a clean run always drops them), so the in-scope data is partial.
+    // Restore from that snapshot BEFORE taking a new one; otherwise we'd snapshot the partial data
+    // and destroy the last good backup — the silent failure the reap was causing.
+    $priorBak = false;
+    foreach ($bakTables as $t) {
+        if ($pdo->query("SHOW TABLES LIKE '_bak_$t'")->fetchColumn() !== false) { $priorBak = true; break; }
+    }
+    if ($priorBak) {
+        echo "Prior --safe run left a snapshot (interrupted mid-reload); restoring before re-syncing...\n";
+        $restoreFromBak();
+    }
     echo "Snapshotting in-scope rows (--safe)...\n";
     foreach ($bakTables as $t) {
         $pdo->exec("DROP TABLE IF EXISTS `_bak_$t`");
@@ -577,12 +601,7 @@ $pdo->exec(
         // the failure itself may have been a dead DB connection — the rollback needs
         // a live one, or the restore dies on its first statement (observed on prod)
         try { $pdo->query('SELECT 1'); } catch (Throwable $dead) { $pdo = Db::connect(); }
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
-        foreach ($bakTables as $t) {
-            $pdo->exec("DELETE FROM `$t` WHERE $scopeSql");
-            $pdo->exec("INSERT INTO `$t` SELECT * FROM `_bak_$t`");
-        }
-        $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+        $restoreFromBak();
         $dropBaks();
         fwrite(STDERR, "Rolled back; data restored to pre-sync state.\n");
     }

@@ -1,5 +1,94 @@
 [
     {
+        "date":  "2026-07-10 18:31",
+        "commit":  "54bc2a4",
+        "changes":  [
+                        "sync_fac --safe: restore from _bak_ before re-snapshotting (survive an uncatchable reap)",
+                        "Drop 7 confirmed-dead indexes (write perf on the reload-hot FAC tables)",
+                        "ETL robustness: transactional award refresh, sentinel ordering, TEMPORARY prune table"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 17:02",
+        "commit":  "7b1de9d",
+        "changes":  [
+                        "prune_usa_awards: guard the usa_award_cfda count so the script runs on prod"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 16:56",
+        "commit":  "649c6af",
+        "changes":  [
+                        "sam_exclusion: drop the dead/misleading unique key (don\u0027t redefine — data would be lost)",
+                        "subaward_edge: add (year, sub_vendor_uei) index for the passthrough per-year loop",
+                        "usa_awards: fetch per-award months/outlays for the SHOWN awards, not the whole family",
+                        "prune_usa_awards: reap orphaned month rows (caps the prod quota leak)"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 16:05",
+        "commit":  "88b880d",
+        "changes":  [
+                        "Clear the last SCA Moderate (uuid) and make npm audit a hard CI gate"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 15:56",
+        "commit":  "61a0ff1",
+        "changes":  [
+                        "GeoMap: fix state/dot clicks — capture the pointer only on drag, not on press",
+                        "Replace abandoned react-simple-maps with direct d3-geo (clears 5 High CVEs)"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 15:08",
+        "commit":  "f6dbd74",
+        "changes":  [
+                        "Reconcile Level-1 delinquency between the profile and the Evaluation dashboard"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 14:21",
+        "commit":  "1efbe8a",
+        "changes":  [
+                        "Index fac_additional_ueis (both lookup directions were full scans)"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 14:10",
+        "commit":  "86287cc",
+        "changes":  [
+                        "Add a React error boundary around the routed page",
+                        "Repeat dashboard: include territory govts in stategov (reconcile with Evaluation)",
+                        "Add CI: run unit tests + frontend build on every PR"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 13:36",
+        "commit":  "a2812c4",
+        "changes":  [
+                        "Harden disk cache writes: atomic + UTF-8-safe (stop serving null for 6h)",
+                        "Fail-closed APP_ENV gate: lock the write/admin surface by default",
+                        "Drop usa_award_txn_month CASCADE FK (latent nightly obligation-months wipe)",
+                        "Fix migration ledger drift: seed all migrations, complete schema.sql"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 10:18",
+        "commit":  "1991dd4",
+        "changes":  [
+                        "Data Status: outlay coverage counts eligible awards with months (fixes 128%)",
+                        "Expended headers: plain \u0027Expended\u0027 everywhere (qualifier moved to tooltips/notes)"
+                    ]
+    },
+    {
+        "date":  "2026-07-10 09:41",
+        "commit":  "db0fc22",
+        "changes":  [
+                        "Outlay months: drop the ON DELETE CASCADE foreign key (nightly wipe bug)"
+                    ]
+    },
+    {
         "date":  "2026-07-09 17:02",
         "commit":  "fb7b7e2",
         "changes":  [

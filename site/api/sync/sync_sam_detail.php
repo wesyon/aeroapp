@@ -136,8 +136,6 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
                 if ($uei === '') continue;
                 $core = $rec['coreData'] ?? [];
 
-                $st['es']->execute([dstr($core['generalInformation']['entityStructureDesc'] ?? null, 50), $uei]);
-
                 $types = [];
                 foreach (($core['businessTypes']['businessTypeList'] ?? []) as $b) {
                     if (($c = dstr($b['businessTypeCode'] ?? null, 10)) !== null) $types[$c] = dstr($b['businessTypeDesc'] ?? null, 255);
@@ -159,6 +157,12 @@ foreach (array_chunk($ueis, 50) as $bi => $batch) {
                     $st['insNz']->execute([$uei, $c, dstr($z['naicsDescription'] ?? null, 255), ($prim !== null && $c === $prim) ? 1 : 0]);
                     $nNz++;
                 }
+
+                // Set the resume sentinel (entity_structure) LAST — after the business-type and NAICS
+                // child rows. The backfill queue is `WHERE entity_structure IS NULL`, so a crash/reap
+                // mid-entity now leaves it NULL and the entity is re-processed next run (delBt/delNz make
+                // that idempotent), instead of dropping out of the queue half-loaded (empty bt/NAICS).
+                $st['es']->execute([dstr($core['generalInformation']['entityStructureDesc'] ?? null, 50), $uei]);
                 $nEnt++;
             }
             break;

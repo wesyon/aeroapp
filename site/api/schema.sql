@@ -20,6 +20,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS schema_migrations;
 DROP TABLE IF EXISTS sync_log;
+DROP TABLE IF EXISTS api_quota_obs;
 DROP TABLE IF EXISTS state_uei;
 DROP TABLE IF EXISTS entity_related_uei;
 DROP TABLE IF EXISTS aero_score;
@@ -31,6 +32,7 @@ DROP TABLE IF EXISTS assistance_listing;
 DROP TABLE IF EXISTS sam_business_type;
 DROP TABLE IF EXISTS sam_entity_naics;
 DROP TABLE IF EXISTS sam_entity;
+DROP TABLE IF EXISTS usa_award_outlay_month;
 DROP TABLE IF EXISTS usa_award_txn_month;
 DROP TABLE IF EXISTS usa_award_cfda;
 DROP TABLE IF EXISTS usa_award;
@@ -81,7 +83,6 @@ CREATE TABLE entity (
   last_seen    DATETIME     NULL,         -- refreshed by the SAM entity seed
   PRIMARY KEY (uei),
   KEY idx_entity_state (state),
-  KEY idx_entity_ein (ein),
   KEY idx_entity_name (display_name),
   KEY idx_entity_type (entity_type),
   KEY idx_entity_year (latest_audit_year),
@@ -172,8 +173,6 @@ CREATE TABLE fac_general (
   PRIMARY KEY (report_id),
   KEY idx_general_uei (auditee_uei),
   KEY idx_general_year (audit_year),
-  KEY idx_general_cog (cognizant_agency),
-  KEY idx_general_oversight (oversight_agency),
   KEY idx_general_state (auditee_state),
   CONSTRAINT fk_general_entity FOREIGN KEY (auditee_uei)
       REFERENCES entity (uei) ON UPDATE CASCADE ON DELETE SET NULL
@@ -240,9 +239,6 @@ CREATE TABLE fac_findings (
   KEY idx_findings_type (type_requirement),
   KEY idx_findings_uei (auditee_uei),
   KEY idx_findings_year (audit_year),
-  -- serves the paginated drill-through's ORDER BY audit_year DESC, report_id,
-  -- reference_number directly (no filesort) — early pages are index-only.
-  KEY idx_findings_year_rpt (audit_year DESC, report_id, reference_number),
   CONSTRAINT fk_findings_general FOREIGN KEY (report_id)
       REFERENCES fac_general (report_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -262,9 +258,6 @@ CREATE TABLE fac_finding_awards (
   federal_agency_prefix VARCHAR(4) NULL,
   PRIMARY KEY (report_id, reference_number, award_reference),
   KEY idx_fawards_award (report_id, award_reference),
-  KEY idx_fawards_agency (audit_year, federal_agency_prefix),
-  -- supports the per-finding agency EXISTS filter (findings_filter)
-  KEY idx_fawards_finding_agency (report_id, reference_number, federal_agency_prefix),
   -- grantee profile filters the bridge on auditee_uei in three queries per view
   KEY idx_fawards_uei (auditee_uei),
   -- covering index for the by-agency aggregation: GROUP BY prefix + DISTINCT
@@ -391,6 +384,8 @@ CREATE TABLE fac_additional_ueis (
   audit_year        SMALLINT    NULL,
   fac_accepted_date DATE        NULL,
   PRIMARY KEY (report_id, additional_uei),
+  KEY idx_addueis_auditee (auditee_uei),      -- by-parent lookup (WHERE auditee_uei IN ...)
+  KEY idx_addueis_member (additional_uei),     -- by-member lookup (additional_uei = / LIKE / IN ...)
   CONSTRAINT fk_addueis_general FOREIGN KEY (report_id)
       REFERENCES fac_general (report_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -583,15 +578,17 @@ CREATE TABLE usa_award_cfda (
 -- Per-award obligations summed by calendar month of the transaction action_date AND CFDA, so the UI
 -- can bucket obligations into any fiscal year at view time (matching USAspending.gov's per-transaction
 -- FY split) and compare obligations by PROGRAM year-over-year. Populated by sync_usa_txns.php.
+-- NO foreign key to usa_award (deliberate, like usa_award_outlay_month): sync_usa.php refreshes a
+-- recipient by DELETE + reinsert, and an ON DELETE CASCADE here silently wiped the refreshed
+-- recipients' obligation months nightly (mirrors the 2026-07-10 outlay-month incident). Orphaned
+-- month rows are harmless — every reader joins through usa_award.
 CREATE TABLE usa_award_txn_month (
   award_id    VARCHAR(64)   NOT NULL,
   cfda        VARCHAR(24)   NOT NULL DEFAULT '',   -- transaction Assistance Listing (CFDA); '' if none
   ym          DATE          NOT NULL,              -- first day of the action_date month
   obligation  DECIMAL(18,2) NOT NULL,              -- sum of federal_action_obligation that month, for that CFDA
   PRIMARY KEY (award_id, ym, cfda),
-  KEY idx_txnmonth_cfda (cfda),
-  CONSTRAINT fk_txnmonth_award FOREIGN KEY (award_id)
-      REFERENCES usa_award (award_id) ON UPDATE CASCADE ON DELETE CASCADE
+  KEY idx_txnmonth_cfda (cfda)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Per-award OUTLAYS summed by calendar month, reconstructed from File C (Account Breakdown by Award).
@@ -601,13 +598,15 @@ CREATE TABLE usa_award_txn_month (
 -- (federal FY, reporting period), differences consecutive periods within each FY to recover the
 -- calendar-month outlay, and stores that delta here — so the UI can bucket outlays into any fiscal
 -- year at view time (entity FYE or federal Sep-30), just like obligations. Deltas may be negative.
+-- NO foreign key to usa_award (deliberate, like usa_award_txn_month): sync_usa.php refreshes a
+-- recipient by DELETE + reinsert, and an ON DELETE CASCADE here silently destroyed the refreshed
+-- recipients' outlay months every night (2026-07-10: 77k awards wiped by one nightly). Orphaned
+-- month rows are harmless — every reader joins through usa_award.
 CREATE TABLE usa_award_outlay_month (
   award_id    VARCHAR(64)   NOT NULL,
   ym          DATE          NOT NULL,              -- first day of the calendar month the outlay fell in
   outlay      DECIMAL(18,2) NOT NULL,              -- gross outlay that calendar month (period-over-period delta; may be negative)
-  PRIMARY KEY (award_id, ym),
-  CONSTRAINT fk_outlaymonth_award FOREIGN KEY (award_id)
-      REFERENCES usa_award (award_id) ON UPDATE CASCADE ON DELETE CASCADE
+  PRIMARY KEY (award_id, ym)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================
@@ -702,10 +701,12 @@ CREATE TABLE sam_exclusion (
   zip_code              VARCHAR(30) NULL,
   country_code          VARCHAR(3)  NULL,
   last_synced           DATETIME    NULL,
+  -- No natural unique key: an entity legitimately has many exclusion records (they don't dedup
+  -- on any available column combination), so the surrogate id PK + the loader's full DELETE+reload
+  -- is the dedup. (The old uq_excl was dead — NULL excluding_agency_code — and a working version
+  -- would have collapsed ~114k real rows; dropped in 2026-07-10_sam_exclusion_drop_dead_key.sql.)
   PRIMARY KEY (id),
-  UNIQUE KEY uq_excl (uei_sam, entity_name, excluding_agency_code, activate_date, classification_type),
   KEY idx_excl_uei (uei_sam),
-  KEY idx_excl_name (entity_name),
   KEY idx_excl_status (record_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -895,10 +896,15 @@ CREATE TABLE entity_related_uei (
 -- unlisted file, and several migrations are non-idempotent against this schema (e.g.
 -- DROP INDEX idx_awards_uei — already absent here; ADD COLUMN entity.has_addl — already
 -- present here), so a missing entry makes apply_migrations.php fatally error on a fresh
--- DB. The two subaward_edge migrations are seeded too, even though their tables are NOT
--- defined in this file: subaward_edge / subaward_entity_type are derived artifacts owned
--- by api/sync/build_subaward_edge.php (which DROP+CREATEs them) and shipped to prod via
--- deploy.ps1 -PushTable, so schema.sql intentionally does not redefine them.
+-- DB. Build-artifact migrations are seeded too, even though their tables are NOT defined
+-- in this file: subaward_edge / subaward_entity_type (build_subaward_edge.php), and
+-- entity_map_point / zip_centroid (build_entity_map_point.php / seed_zip_centroid.php)
+-- are derived/reference artifacts DROP+CREATEd by their build scripts and shipped to prod
+-- via deploy.ps1 -PushTable, so schema.sql intentionally does not redefine them. Every
+-- other migration's end state IS folded into the DDL above (e.g. the 2026-07-01 quota /
+-- progress_at columns + api_quota_obs, the 2026-07-10 outlay-month FK drop), so seeding
+-- them here just tells the runner "already applied — skip". Keep this list == migrations/*
+-- (enforced by api/tests/migrations_seed_test.php).
 CREATE TABLE schema_migrations (
   filename   VARCHAR(255) NOT NULL,
   applied_at DATETIME     NOT NULL,
@@ -921,7 +927,17 @@ INSERT INTO schema_migrations (filename, applied_at) VALUES
   ('2026-06-17_entity_directory_columns.sql', UTC_TIMESTAMP()),
   ('2026-06-17_entity_addl_backfill.sql', UTC_TIMESTAMP()),
   ('2026-06-17_usa_award_txn_month.sql', UTC_TIMESTAMP()),
-  ('2026-07-08_entity_related_uei.sql', UTC_TIMESTAMP());
+  ('2026-06-22_entity_map_point.sql', UTC_TIMESTAMP()),
+  ('2026-06-22_zip_centroid.sql', UTC_TIMESTAMP()),
+  ('2026-07-01_synclog_progress_at.sql', UTC_TIMESTAMP()),
+  ('2026-07-01_quota_tracking.sql', UTC_TIMESTAMP()),
+  ('2026-07-01_usa_award_outlay_month.sql', UTC_TIMESTAMP()),
+  ('2026-07-08_entity_related_uei.sql', UTC_TIMESTAMP()),
+  ('2026-07-10_outlay_month_drop_fk.sql', UTC_TIMESTAMP()),
+  ('2026-07-10_txn_month_drop_fk.sql', UTC_TIMESTAMP()),
+  ('2026-07-10_fac_additional_ueis_indexes.sql', UTC_TIMESTAMP()),
+  ('2026-07-10_sam_exclusion_drop_dead_key.sql', UTC_TIMESTAMP()),
+  ('2026-07-10_drop_dead_indexes.sql', UTC_TIMESTAMP());
 
 CREATE TABLE sync_log (
   id            BIGINT      NOT NULL AUTO_INCREMENT,
@@ -929,13 +945,28 @@ CREATE TABLE sync_log (
   scope         VARCHAR(40) NULL,            -- audit_year or uei
   table_name    VARCHAR(50) NULL,
   rows_upserted INT         NULL,
+  requests      INT         NULL,            -- API requests this run (exact where the API reports it; see api_quota_obs)
   status        VARCHAR(20) NULL,            -- ok | error
   message       TEXT        NULL,
   started_at    DATETIME    NULL,
+  progress_at   DATETIME    NULL,            -- last progress tick; a RUNNING row stale on this is a cut-off run
   finished_at   DATETIME    NULL,
   PRIMARY KEY (id),
   KEY idx_synclog_source (source),
   KEY idx_synclog_started (started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Observed API rate-limit state for the Data Status console — ground truth where an API
+-- reports it (FAC returns X-RateLimit-* on every response; SAM only a reset time on a 429),
+-- captured by FacClient / the SAM syncs. One row per source (latest observation wins).
+CREATE TABLE api_quota_obs (
+  source       VARCHAR(32)  NOT NULL,          -- 'fac', 'sam', ...
+  limit_total  INT          NULL,              -- window cap, from the API when it reports one
+  remaining    INT          NULL,              -- requests left in the window (header APIs only)
+  observed_at  DATETIME     NULL,              -- UTC, when remaining/limit was read from a response
+  reset_at     DATETIME     NULL,              -- UTC, when the window resets (SAM: next midnight on 429)
+  note         VARCHAR(255) NULL,              -- free-text (e.g. 'daily limit reached')
+  PRIMARY KEY (source)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================

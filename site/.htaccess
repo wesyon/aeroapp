@@ -15,6 +15,11 @@
   RewriteRule ^ index.html [L]
 </IfModule>
 
+# Correct MIME for the Word doc under /hrsa/ (host default serves .docx as text/plain).
+<IfModule mod_mime.c>
+  AddType application/vnd.openxmlformats-officedocument.wordprocessingml.document .docx
+</IfModule>
+
 # Light caching for hashed build assets
 <IfModule mod_expires.c>
   ExpiresActive On

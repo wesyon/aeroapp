@@ -1,0 +1,581 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HRSA Single Audit Compliance Methodology</title>
+<style>
+  :root {
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-2:#EDF1F5; --inset:#F8FAFB;
+    --ink:#182029; --ink-soft:#4B5866; --ink-faint:#8090A0;
+    --line:#DBE1E9; --line-strong:#C4CDD8;
+    --accent:#276B7C; --accent-ink:#1C5361; --accent-soft:#E1EEF1;
+
+    --good:#2C7A50;  --good-bg:#E6F1EA;  --good-line:#B7D8C4;
+    --crit:#B23A2C;  --crit-bg:#FBE9E6;  --crit-line:#EFC3BB;
+    --warn:#9A6612;  --warn-bg:#FAF0DC;  --warn-line:#E7D0A0;
+    --info:#2A62A8;  --info-bg:#E7EFFA;  --info-line:#BDD3EE;
+    --neut:#5A6A7C;  --neut-bg:#EBEFF3;  --neut-line:#CDD6DF;
+
+    --shadow:0 1px 2px rgba(24,32,41,.05), 0 6px 20px -10px rgba(24,32,41,.18);
+    --serif:Georgia,"Iowan Old Style","Times New Roman",serif;
+    --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",sans-serif;
+    --mono:"Cascadia Code","Consolas","SFMono-Regular",ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --ground:#0D1218; --surface:#161D26; --surface-2:#1D2732; --inset:#131A22;
+      --ink:#E6ECF3; --ink-soft:#A7B4C2; --ink-faint:#6B7A8B;
+      --line:#293440; --line-strong:#374556;
+      --accent:#54B4C6; --accent-ink:#8FD6E2; --accent-soft:#123038;
+      --good:#67CE93; --good-bg:#16281E; --good-line:#2C4C39;
+      --crit:#F0917F; --crit-bg:#2C1713; --crit-line:#553027;
+      --warn:#E1B25E; --warn-bg:#2A2010; --warn-line:#4E3D1C;
+      --info:#77ADEC; --info-bg:#131F30; --info-line:#2B4260;
+      --neut:#9AAABB; --neut-bg:#1A222C; --neut-line:#333F4C;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"]{
+    --ground:#F4F6F8; --surface:#FFFFFF; --surface-2:#EDF1F5; --inset:#F8FAFB;
+    --ink:#182029; --ink-soft:#4B5866; --ink-faint:#8090A0;
+    --line:#DBE1E9; --line-strong:#C4CDD8;
+    --accent:#276B7C; --accent-ink:#1C5361; --accent-soft:#E1EEF1;
+    --good:#2C7A50; --good-bg:#E6F1EA; --good-line:#B7D8C4;
+    --crit:#B23A2C; --crit-bg:#FBE9E6; --crit-line:#EFC3BB;
+    --warn:#9A6612; --warn-bg:#FAF0DC; --warn-line:#E7D0A0;
+    --info:#2A62A8; --info-bg:#E7EFFA; --info-line:#BDD3EE;
+    --neut:#5A6A7C; --neut-bg:#EBEFF3; --neut-line:#CDD6DF;
+    --shadow:0 1px 2px rgba(24,32,41,.05), 0 6px 20px -10px rgba(24,32,41,.18);
+  }
+  :root[data-theme="dark"]{
+    --ground:#0D1218; --surface:#161D26; --surface-2:#1D2732; --inset:#131A22;
+    --ink:#E6ECF3; --ink-soft:#A7B4C2; --ink-faint:#6B7A8B;
+    --line:#293440; --line-strong:#374556;
+    --accent:#54B4C6; --accent-ink:#8FD6E2; --accent-soft:#123038;
+    --good:#67CE93; --good-bg:#16281E; --good-line:#2C4C39;
+    --crit:#F0917F; --crit-bg:#2C1713; --crit-line:#553027;
+    --warn:#E1B25E; --warn-bg:#2A2010; --warn-line:#4E3D1C;
+    --info:#77ADEC; --info-bg:#131F30; --info-line:#2B4260;
+    --neut:#9AAABB; --neut-bg:#1A222C; --neut-line:#333F4C;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:clamp(28px,5vw,64px) clamp(18px,4vw,40px) 80px;}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--accent-ink); font-weight:600; margin:0 0 14px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{content:""; width:26px; height:2px; background:var(--accent); border-radius:2px;}
+  h1{
+    font-family:var(--serif); font-weight:600; letter-spacing:-.01em;
+    font-size:clamp(28px,5vw,44px); line-height:1.09; margin:0 0 16px; text-wrap:balance;
+  }
+  .lede{font-size:clamp(15px,2vw,17.5px); color:var(--ink-soft); margin:0 0 20px;}
+
+  .docmeta{display:flex; flex-wrap:wrap; gap:10px; margin:0 0 16px; padding:0;}
+  .docmeta > div{flex:1 1 210px; min-width:180px; background:var(--surface); border:1px solid var(--line);
+    border-radius:11px; padding:11px 14px; box-shadow:var(--shadow);}
+  .docmeta dt{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--ink-faint); margin-bottom:4px; font-weight:600;}
+  .docmeta dd{margin:0; font-size:13.5px; font-weight:600; color:var(--ink);}
+  .docmeta dd span{display:block; font-weight:400; font-size:12px; color:var(--ink-faint); margin-top:1px;}
+
+  .disclaim{
+    display:flex; align-items:flex-start; gap:9px;
+    font-size:13px; color:var(--ink-soft); background:var(--surface-2);
+    border:1px solid var(--line); border-radius:10px; padding:11px 14px;
+  }
+  .disclaim b{color:var(--ink); font-weight:600;}
+  .disclaim::before{content:"i"; flex:0 0 auto; width:18px; height:18px; border-radius:50%;
+    background:var(--accent); color:#fff; font-family:var(--serif); font-style:italic; font-weight:700;
+    font-size:12px; display:grid; place-items:center; margin-top:1px;}
+
+  .actions{margin:18px 0 0; display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+  .dl-btn{display:inline-flex; align-items:center; gap:10px; text-decoration:none;
+    font-family:var(--sans); font-size:14px; font-weight:600; line-height:1.2;
+    color:#fff; background:var(--accent); border:1px solid var(--accent-ink);
+    padding:11px 18px; border-radius:11px; box-shadow:var(--shadow);
+    transition:background .15s, transform .1s, box-shadow .15s;}
+  .dl-btn:hover{background:var(--accent-ink); box-shadow:0 2px 4px rgba(24,32,41,.08), 0 10px 26px -12px rgba(24,32,41,.4);}
+  .dl-btn:active{transform:translateY(1px);}
+  .dl-btn:focus-visible{outline:3px solid var(--accent-soft); outline-offset:2px;}
+  .dl-btn svg{width:18px; height:18px; flex:0 0 auto;}
+  .dl-btn small{display:block; font-weight:400; font-size:11px; letter-spacing:.02em; opacity:.82; margin-top:1px;}
+  footer .dl-btn{font-size:13px; padding:9px 15px;}
+
+  .pipe{
+    margin:34px 0 8px; padding:18px 20px; background:var(--surface); border:1px solid var(--line);
+    border-radius:14px; box-shadow:var(--shadow); display:flex; flex-wrap:wrap; align-items:center; gap:10px 8px;
+  }
+  .pipe__label{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-faint); width:100%; margin-bottom:2px;}
+  .phase{display:flex; flex-direction:column; gap:2px; padding:8px 14px; border-radius:10px;
+    background:var(--inset); border:1px solid var(--line); min-width:0; position:relative; transition:opacity .18s;}
+  .phase b{font-size:14px; font-weight:600;} .phase span{font-size:11.5px; color:var(--ink-faint);}
+  .phase:not(.phase--on){opacity:.45;}
+  .phase--on{background:var(--accent-soft); border:2px solid var(--accent); padding:7px 15px;
+    box-shadow:0 0 0 3px var(--accent-soft), 0 8px 18px -8px rgba(24,32,41,.30);}
+  .phase--on b{color:var(--accent-ink); font-size:15px;} .phase--on span{color:var(--accent);}
+  .phase__flag{align-self:flex-start; font-family:var(--mono); font-size:9px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--accent-ink);
+    background:var(--surface); border:1px solid var(--accent); padding:2px 7px; border-radius:5px; margin-bottom:4px;}
+  .phase--on::after{content:""; position:absolute; left:50%; bottom:-10px; transform:translateX(-50%);
+    border-left:7px solid transparent; border-right:7px solid transparent; border-top:8px solid var(--accent);}
+  .pipe__arrow{color:var(--ink-faint); font-size:16px; flex:0 0 auto;}
+  .pipe__note{width:100%; margin-top:15px; font-size:12.5px; color:var(--ink-soft);}
+  .pipe__note b{color:var(--accent-ink); font-weight:600;}
+
+  .flowhead{margin:44px 0 6px;}
+  .flowhead h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:0 0 6px;}
+  .flowhead p{margin:0; color:var(--ink-soft); font-size:14.5px;}
+  .flowhead .rule{font-family:var(--mono); font-size:11px; color:var(--accent-ink); font-weight:700;
+    background:var(--accent-soft); border:1px solid var(--accent); padding:1px 7px; border-radius:6px; white-space:nowrap;}
+
+  .flow{margin-top:26px; position:relative;}
+  .gate{background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); overflow:hidden; transition:opacity .18s, border-color .18s;}
+  .gate__top{display:flex; align-items:center; gap:12px; padding:14px 18px 12px;
+    border-bottom:1px solid var(--line); background:var(--inset);}
+  .gate__num{flex:0 0 auto; width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+    font-family:var(--mono); font-weight:700; font-size:14px; background:var(--accent); color:#fff;}
+  .gate__q{font-size:15.5px; font-weight:600; margin:0; flex:1; min-width:0;}
+  .gate__src{flex:0 0 auto; font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+    padding:4px 9px; border-radius:999px; border:1px solid var(--line-strong); color:var(--ink-soft);
+    background:var(--surface); white-space:nowrap;}
+  .gate__body{padding:6px 18px 14px; display:flex; flex-direction:column;}
+  .branch{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 4px; border-bottom:1px dashed var(--line);}
+  .branch:last-child{border-bottom:0;}
+  .cond{display:inline-flex; align-items:center; gap:8px; min-width:150px; font-size:13.5px; color:var(--ink-soft);}
+  .dot{width:9px; height:9px; border-radius:50%; flex:0 0 auto;}
+  .dot--y{background:var(--good);} .dot--n{background:var(--neut);}
+  .dot--a{background:var(--warn);} .dot--b{background:var(--info);} .dot--c{background:var(--crit);}
+  .arw{color:var(--ink-faint); font-size:14px;}
+
+  .outcome{display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:999px;
+    font-family:var(--serif); font-size:13.5px; font-weight:600; border:1px solid;
+    transition:opacity .18s, transform .12s, box-shadow .18s; cursor:default;}
+  .outcome::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor; flex:0 0 auto;}
+  .o-good{color:var(--good); background:var(--good-bg); border-color:var(--good-line);}
+  .o-crit{color:var(--crit); background:var(--crit-bg); border-color:var(--crit-line);}
+  .o-warn{color:var(--warn); background:var(--warn-bg); border-color:var(--warn-line);}
+  .o-info{color:var(--info); background:var(--info-bg); border-color:var(--info-line);}
+  .o-neut{color:var(--neut); background:var(--neut-bg); border-color:var(--neut-line);}
+  .cont{font-size:13px; color:var(--accent-ink); font-weight:600; font-family:var(--mono);}
+
+  .conn{display:flex; justify-content:center; align-items:center; gap:9px; padding:9px 0; position:relative;}
+  .conn::before{content:""; position:absolute; top:0; bottom:0; left:50%; width:2px; background:var(--line-strong); transform:translateX(-50%);}
+  .conn span{position:relative; z-index:1; font-family:var(--mono); font-size:11px; letter-spacing:.03em;
+    background:var(--ground); color:var(--ink-soft); padding:3px 12px; border-radius:999px;
+    border:1px solid var(--line); box-shadow:0 0 0 4px var(--ground);}
+  .conn span b{color:var(--accent-ink); font-weight:600;}
+
+  .note-inline{margin:0; padding:9px 14px 10px; font-size:12.5px; color:var(--ink-soft);
+    background:var(--surface-2); border-top:1px solid var(--line);}
+
+  .callout{margin-top:46px; background:var(--surface); border:1px solid var(--warn-line);
+    border-left:4px solid var(--warn); border-radius:14px; box-shadow:var(--shadow); padding:22px 24px;}
+  .callout__tag{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--warn); font-weight:700; display:flex; align-items:center; gap:8px; margin-bottom:10px;}
+  .callout__tag::before{content:""; width:8px; height:8px; border-radius:2px; background:var(--warn); transform:rotate(45deg);}
+  .callout h2{font-family:var(--serif); font-size:21px; margin:0 0 12px; font-weight:600; text-wrap:balance;}
+  .callout p{margin:0 0 13px; font-size:14.5px; color:var(--ink-soft);}
+  .callout p:last-child{margin-bottom:0;}
+  .callout strong{color:var(--ink); font-weight:600;}
+  .vs{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:16px 0 18px;}
+  .vs__card{border:1px solid var(--line); border-radius:11px; padding:14px 16px; background:var(--inset);}
+  .vs__card h3{margin:0 0 3px; font-size:14.5px; font-family:var(--serif); font-weight:700;}
+  .vs__card .role{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:8px; display:block;}
+  .vs__card p{font-size:13px; margin:0; color:var(--ink-soft);}
+  .vs--use{border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent);}
+  .vs--use .role{color:var(--accent-ink);}
+  .vs--rule .role{color:var(--ink-faint);}
+
+  .legend{margin-top:48px;}
+  .legend h2{font-family:var(--serif); font-weight:600; font-size:22px; margin:0 0 4px;}
+  .legend > p{margin:0 0 18px; color:var(--ink-soft); font-size:14px;}
+  .legend__grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(244px,1fr)); gap:12px;}
+  .lc{color:inherit; background:var(--surface);
+    border:1px solid var(--line); border-left:4px solid var(--lc); border-radius:12px; padding:14px 16px;
+    box-shadow:var(--shadow); display:flex; flex-direction:column; gap:5px;}
+  .lc__name{font-family:var(--serif); font-weight:700; font-size:16px; color:var(--lc); display:flex; align-items:center; gap:8px;}
+  .lc__name::before{content:""; width:9px; height:9px; border-radius:50%; background:var(--lc);}
+  .lc__def{font-size:13px; color:var(--ink-soft); line-height:1.45;}
+  .lc--good{--lc:var(--good);} .lc--crit{--lc:var(--crit);} .lc--warn{--lc:var(--warn);}
+  .lc--info{--lc:var(--info);} .lc--neut{--lc:var(--neut);}
+  .lc__hint{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-faint);}
+
+  .ref{margin-top:44px; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden;}
+  .ref__head{padding:14px 18px; border-bottom:1px solid var(--line); background:var(--inset);
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft);}
+  .ref__grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(232px,1fr));}
+  .ref__item{padding:15px 18px; border-top:1px solid var(--line); border-right:1px solid var(--line);}
+  .ref__item dt{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:5px; font-weight:600;}
+  .ref__item dd{margin:0; font-size:14px;}
+  .ref__item dd b{font-weight:700;}
+  .ref__item small{display:block; color:var(--ink-faint); font-size:12px; margin-top:3px;}
+
+  footer{margin-top:40px; padding-top:18px; border-top:1px solid var(--line);
+    font-size:12.5px; color:var(--ink-faint); display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline;}
+
+  /* assessment */
+  .assess-head{margin-top:52px;}
+  .assess-head h2{font-family:var(--serif); font-weight:600; font-size:24px; margin:0 0 6px; text-wrap:balance;}
+  .assess-head p{margin:0; color:var(--ink-soft); font-size:14.5px;}
+  .verdict{margin-top:20px; background:var(--accent-soft); border:1px solid var(--accent);
+    border-left:4px solid var(--accent); border-radius:14px; padding:18px 22px;}
+  .verdict__tag{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent-ink); font-weight:700; margin-bottom:7px; display:block;}
+  .verdict p{margin:0; font-size:15.5px; color:var(--ink); line-height:1.5;}
+  .verdict strong{font-weight:700;}
+  .assess{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; align-items:stretch;}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden;}
+  .panel__head{padding:13px 18px; border-bottom:1px solid var(--line); background:var(--inset); display:flex; align-items:center; gap:9px;}
+  .panel__head h3{margin:0; font-family:var(--serif); font-size:17px; font-weight:700;}
+  .panel__head .ic{width:11px; height:11px; border-radius:3px; flex:0 0 auto;}
+  .panel--good .ic{background:var(--good);}
+  .panel--lim .ic{background:var(--warn);}
+  .panel--asm .ic{background:var(--neut);}
+  .panel ul{list-style:none; margin:0; padding:6px 18px 14px;}
+  .panel li{padding:9px 0; border-bottom:1px dashed var(--line); font-size:13.5px; color:var(--ink-soft); line-height:1.5;}
+  .panel li:last-child{border-bottom:0;}
+  .panel li b{color:var(--ink); font-weight:600;}
+  .panel--asm{grid-column:1 / -1;}
+  .sev{display:inline-block; font-family:var(--mono); font-size:9.5px; letter-spacing:.05em; text-transform:uppercase;
+    font-weight:700; padding:2px 7px; border-radius:5px; margin-right:8px; white-space:nowrap;}
+  .sev--high{color:var(--crit); background:var(--crit-bg); border:1px solid var(--crit-line);}
+  .sev--med{color:var(--warn); background:var(--warn-bg); border:1px solid var(--warn-line);}
+  .sev--low{color:var(--neut); background:var(--neut-bg); border:1px solid var(--neut-line);}
+  .asm-grid{display:grid !important; grid-template-columns:1fr 1fr; gap:0 26px;}
+  .asm-grid li{border-bottom:0 !important; padding:7px 0 7px 18px; position:relative;}
+  .asm-grid li::before{content:""; position:absolute; left:2px; top:13px; width:6px; height:6px; border-radius:50%; background:var(--neut);}
+
+  @media (max-width:560px){
+    .cond{min-width:0; width:100%;}
+    .ref__item{border-right:0;}
+    .vs{grid-template-columns:1fr;}
+    .assess{grid-template-columns:1fr;}
+    .asm-grid{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">HRSA Methodology &middot; Single Audit Compliance</p>
+    <h1>How HRSA identifies grantees with a delinquent Single Audit</h1>
+    <p class="lede">Organizations that expend federal funding above a set threshold must obtain an independent <strong>Single Audit</strong> each year. HRSA&rsquo;s process reviews every grantee, one fiscal year at a time, and sorts each into one of five outcomes.</p>
+
+    <dl class="docmeta">
+      <div><dt>Methodology owner</dt><dd>HRSA<span>Health Resources &amp; Services Administration</span></dd></div>
+      <div><dt>Governing rule</dt><dd>2 CFR Part 200<span>Uniform Guidance &mdash; Subpart F</span></dd></div>
+    </dl>
+
+    <p class="disclaim"><span>This summarizes an <b>automated screening HRSA uses to prioritize follow&#8209;up</b> &mdash; it is not a final compliance determination. Individual results, especially near the funding threshold, should be confirmed before any action.</span></p>
+
+    <div class="actions">
+      <a class="dl-btn" href="HRSA_Single_Audit_Methodology_Review.docx" download="HRSA Single Audit Methodology Review.docx">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Download the Word document<small>HRSA_Single_Audit_Methodology_Review.docx</small></span>
+      </a>
+    </div>
+  </header>
+
+  <!-- ASSESSMENT (bottom line up front) -->
+  <section class="assess-wrap" aria-label="Assessment of the methodology">
+    <div class="assess-head">
+      <h2>Assessment: strengths, limitations &amp; assumptions</h2>
+      <p>An independent read of HRSA&rsquo;s methodology, prepared for this review. The aim is to be clear about what the screening does well and where its results should be confirmed before action is taken. The methodology itself is detailed below.</p>
+    </div>
+
+    <div class="verdict">
+      <span class="verdict__tag">Bottom line</span>
+      <p><strong>A sound screening and triage tool</strong> &mdash; reliable for narrowing a large grantee population down to a prioritized follow&#8209;up list. It is <strong>not a final compliance determination</strong>: results near the dollar threshold, and cases sent to manual review, should be confirmed individually.</p>
+    </div>
+
+    <div class="assess">
+      <div class="panel panel--good">
+        <div class="panel__head"><span class="ic"></span><h3>Strengths</h3></div>
+        <ul>
+          <li><b>Checks for a filed audit first.</b> A grantee with an audit on file is treated as compliant regardless of funding &mdash; matching how the rule actually works.</li>
+          <li><b>Recognizes parent&#8209;organization coverage.</b> Grantees audited under a parent entity are correctly credited, which avoids false delinquents.</li>
+          <li><b>Applies the current thresholds.</b> Includes the increase from $750K to $1M for fiscal years beginning on/after Oct&nbsp;1,&nbsp;2024, based on each grantee&rsquo;s own fiscal year.</li>
+          <li><b>Uses the correct 9&#8209;month filing deadline</b> from the Uniform Guidance.</li>
+          <li><b>Fails safe.</b> When funding data is missing or a fiscal year&#8209;end can&rsquo;t be determined, cases are routed to human review rather than cleared.</li>
+          <li><b>Repeatable and auditable.</b> Every run is logged and can be re&#8209;run; results update in place rather than duplicate.</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--lim">
+        <div class="panel__head"><span class="ic"></span><h3>Limitations</h3></div>
+        <ul>
+          <li><span class="sev sev--high">High</span><b>HHS funding only.</b> The threshold is based on total federal funding across all agencies, but this screening sees only HHS funding. &ldquo;No audit required&rdquo; therefore means &ldquo;based on HHS funding.&rdquo;</li>
+          <li><span class="sev sev--high">High</span><b>Awarded vs. spent.</b> The rule is based on funds spent; this screening uses funds awarded (see the methodology note below). Borderline cases may differ.</li>
+          <li><span class="sev sev--med">Med</span><b>Fiscal&#8209;year alignment.</b> Funding is totaled by the federal fiscal year (Oct&ndash;Sep). For grantees whose year ends in another month, the funding window is shifted, which can affect borderline cases.</li>
+          <li><span class="sev sev--med">Med</span><b>Finds missing audits, not late ones.</b> A grantee that eventually filed &mdash; even well past the deadline &mdash; is counted as compliant.</li>
+          <li><span class="sev sev--med">Med</span><b>First&#8209;time non&#8209;filers.</b> A grantee&rsquo;s year&#8209;end is inferred from its past audits, so one that crossed the threshold but has never filed goes to manual review rather than &ldquo;delinquent.&rdquo;</li>
+          <li><span class="sev sev--low">Low</span><b>Standard annual audits assumed.</b> Special cases such as biennial or program&#8209;specific audits are not separately handled.</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--asm">
+        <div class="panel__head"><span class="ic"></span><h3>Assumptions to confirm before relying on results</h3></div>
+        <ul class="asm-grid">
+          <li>HHS funding is a sufficient stand&#8209;in for total federal funding.</li>
+          <li>Funds awarded approximate funds spent.</li>
+          <li>Each grantee&rsquo;s fiscal year aligns closely enough with the federal fiscal year.</li>
+          <li>The excluded&#8209;program list (93.255 and 93.530) is correct and complete.</li>
+          <li>A filed audit means compliant (timing of filed audits is not evaluated).</li>
+          <li>Grantees follow a standard annual Single Audit schedule.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- METHODOLOGY NOTE -->
+  <section class="callout" aria-label="Methodology note">
+    <span class="callout__tag">Methodology note &mdash; please read</span>
+    <h2>How &ldquo;funding&rdquo; is measured: awarded vs. spent</h2>
+    <p>The audit requirement depends on a dollar threshold. There are two ways to measure a grantee&rsquo;s federal funding, and they are not always the same number:</p>
+    <div class="vs">
+      <div class="vs__card vs--rule">
+        <span class="role">What the rule cites</span>
+        <h3>Money spent</h3>
+        <p>The regulation bases the audit requirement on what a grantee actually <strong>spends</strong> during its fiscal year (its &ldquo;expenditures&rdquo;). This amount is <strong>self&#8209;reported by the recipient</strong> and is not independently available as federal data.</p>
+      </div>
+      <div class="vs__card vs--use">
+        <span class="role">What this screening uses</span>
+        <h3>Money awarded</h3>
+        <p>The screening measures what was <strong>awarded</strong> to each grantee (its &ldquo;obligations&rdquo;), because award amounts are reliably reported per organization while spending amounts often are not.</p>
+      </div>
+    </div>
+    <p>The two figures can be close, but they can also be very different &mdash; money awarded in one year may be spent across several. <strong>For grantees near the dollar threshold, measuring awarded funding instead of money spent can place some on the wrong side of the equation &mdash; flagging a grantee that was not actually required to audit, or clearing one that was.</strong> Results close to the threshold should be treated as a prompt to verify, not a final answer.</p>
+  </section>
+
+  <section class="pipe" aria-label="Process steps">
+    <span class="pipe__label">HRSA&rsquo;s process, end to end</span>
+    <div class="phase"><b>1 &middot; Gather</b><span>Grantee list</span></div>
+    <span class="pipe__arrow">&rarr;</span>
+    <div class="phase"><b>2 &middot; Look up</b><span>Audit &amp; funding records</span></div>
+    <span class="pipe__arrow">&rarr;</span>
+    <div class="phase phase--on"><span class="phase__flag">Reviewed here</span><b>3 &middot; Classify</b><span>Sort each grantee</span></div>
+    <span class="pipe__arrow">&rarr;</span>
+    <div class="phase"><b>4 &middot; Report</b><span>Tracker spreadsheet</span></div>
+    <p class="pipe__note"><b>&darr;</b> This review focuses on <b>Step&nbsp;3 &mdash; Classify</b>: how each grantee gets sorted into an outcome, explained below.</p>
+  </section>
+
+  <div class="flowhead">
+    <h2>The five questions, in order</h2>
+    <p>Each grantee is evaluated one fiscal year at a time, working down the questions in order. <strong>The first question that resolves decides the outcome</strong> &mdash; the rest are skipped. Colored labels mark final outcomes; <span class="rule">keep checking&nbsp;&darr;</span> means the case moves to the next question.</p>
+  </div>
+
+  <div class="flow" id="flow">
+
+    <!-- 1 -->
+    <div class="gate" data-level="1">
+      <div class="gate__top">
+        <span class="gate__num">1</span>
+        <p class="gate__q">Did the grantee file an audit that covers this year?</p>
+        <span class="gate__src">Federal audit records</span>
+      </div>
+      <div class="gate__body">
+        <div class="branch">
+          <span class="cond"><span class="dot dot--y"></span> Yes, on file</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-good" data-state="good">Compliant</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--n"></span> No audit found</span>
+          <span class="arw">&rarr;</span>
+          <span class="cont">keep checking &darr;</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="conn"><span>no audit filed directly</span></div>
+
+    <!-- 2 -->
+    <div class="gate" data-level="2">
+      <div class="gate__top">
+        <span class="gate__num">2</span>
+        <p class="gate__q">Is the grantee covered under a parent organization&rsquo;s audit?</p>
+        <span class="gate__src">Federal audit records</span>
+      </div>
+      <div class="gate__body">
+        <div class="branch">
+          <span class="cond"><span class="dot dot--y"></span> Yes, covered</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-good" data-state="good">Compliant</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--n"></span> No</span>
+          <span class="arw">&rarr;</span>
+          <span class="cont">keep checking &darr;</span>
+        </div>
+      </div>
+      <p class="note-inline">No audit on file anywhere. The next step is to ask whether one was even <em>required</em>.</p>
+    </div>
+
+    <div class="conn"><span>no audit on file &mdash; <b>was one required?</b></span></div>
+
+    <!-- 3 -->
+    <div class="gate" data-level="3">
+      <div class="gate__top">
+        <span class="gate__num">3</span>
+        <p class="gate__q">Did the grantee receive enough federal funding to require an audit?</p>
+        <span class="gate__src">Federal funding records</span>
+      </div>
+      <div class="gate__body">
+        <div class="branch">
+          <span class="cond"><span class="dot dot--a"></span> No funding data</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-warn" data-state="warn">Needs manual review</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--n"></span> Under the threshold</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-neut" data-state="neut">No audit required</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--y"></span> At or over threshold</span>
+          <span class="arw">&rarr;</span>
+          <span class="cont">audit required &darr;</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="conn"><span>audit required but not filed &mdash; <b>is it late?</b></span></div>
+
+    <!-- 4 -->
+    <div class="gate" data-level="4">
+      <div class="gate__top">
+        <span class="gate__num">4</span>
+        <p class="gate__q">Do we know when the grantee&rsquo;s fiscal year ends?</p>
+        <span class="gate__src">Calculated</span>
+      </div>
+      <div class="gate__body">
+        <div class="branch">
+          <span class="cond"><span class="dot dot--a"></span> Unknown</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-warn" data-state="warn">Needs manual review</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--y"></span> Known</span>
+          <span class="arw">&rarr;</span>
+          <span class="cont">deadline = year&#8209;end + 9 months &darr;</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="conn"><span>compare the deadline to <b>today</b></span></div>
+
+    <!-- 5 -->
+    <div class="gate" data-level="5">
+      <div class="gate__top">
+        <span class="gate__num">5</span>
+        <p class="gate__q">Has the audit deadline already passed?</p>
+        <span class="gate__src">Calculated</span>
+      </div>
+      <div class="gate__body">
+        <div class="branch">
+          <span class="cond"><span class="dot dot--b"></span> Not yet</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-info" data-state="info">Audit not yet due</span>
+        </div>
+        <div class="branch">
+          <span class="cond"><span class="dot dot--c"></span> Deadline passed</span>
+          <span class="arw">&rarr;</span>
+          <span class="outcome o-crit" data-state="crit">Delinquent</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEGEND -->
+  <section class="legend">
+    <h2>What each outcome means</h2>
+    <div class="legend__grid">
+      <div class="lc lc--good">
+        <span class="lc__name">Compliant</span>
+        <span class="lc__def">The required audit is on file &mdash; filed by the grantee, or covered through a parent organization. When an audit exists, funding is not even checked.</span>
+        <span class="lc__hint">Questions 1&ndash;2</span>
+      </div>
+      <div class="lc lc--neut">
+        <span class="lc__name">No audit required</span>
+        <span class="lc__def">The grantee received less than the funding threshold (after setting aside certain excluded grants), so no Single Audit was required.</span>
+        <span class="lc__hint">Question 3</span>
+      </div>
+      <div class="lc lc--info">
+        <span class="lc__name">Audit not yet due</span>
+        <span class="lc__def">The grantee crossed the threshold and has no audit on file &mdash; but the filing deadline has not arrived yet. Not late, just pending.</span>
+        <span class="lc__hint">Question 5</span>
+      </div>
+      <div class="lc lc--crit">
+        <span class="lc__name">Delinquent</span>
+        <span class="lc__def">An audit was required, the deadline has passed, and none was found anywhere. These are the cases that need follow&#8209;up.</span>
+        <span class="lc__hint">Question 5</span>
+      </div>
+      <div class="lc lc--warn">
+        <span class="lc__name">Needs manual review</span>
+        <span class="lc__def">There was not enough information to decide automatically &mdash; missing funding data, or an unknown fiscal year&#8209;end. A person should review these individually.</span>
+        <span class="lc__hint">Questions 3&ndash;4</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- REFERENCE -->
+  <section class="ref" aria-label="Key rules">
+    <div class="ref__head">The rules applied</div>
+    <dl class="ref__grid">
+      <div class="ref__item">
+        <dt>Funding threshold</dt>
+        <dd><b>$750,000</b><small>Rises to <b>$1,000,000</b> for fiscal years starting on/after Oct 1, 2024</small></dd>
+      </div>
+      <div class="ref__item">
+        <dt>Funding measured</dt>
+        <dd>Federal funding <b>awarded</b> to the grantee<small>See the methodology note above</small></dd>
+      </div>
+      <div class="ref__item">
+        <dt>Excluded grants</dt>
+        <dd>Certain grant programs are set aside<small>Programs 93.255 and 93.530, removed before applying the threshold</small></dd>
+      </div>
+      <div class="ref__item">
+        <dt>Audit deadline</dt>
+        <dd><b>9 months</b> after fiscal year&#8209;end<small>Per the Uniform Guidance</small></dd>
+      </div>
+      <div class="ref__item">
+        <dt>Years reviewed</dt>
+        <dd>The target year <b>plus the two prior years</b><small>A rolling three&#8209;year window</small></dd>
+      </div>
+      <div class="ref__item">
+        <dt>Where the data comes from</dt>
+        <dd>Federal Audit Clearinghouse &amp; USAspending.gov<small>Official federal audit and spending records</small></dd>
+      </div>
+    </dl>
+  </section>
+
+  <footer>
+    <span>HRSA Single Audit compliance methodology</span>
+    <a class="dl-btn" href="HRSA_Single_Audit_Methodology_Review.docx" download="HRSA Single Audit Methodology Review.docx" style="margin-left:auto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      <span>Download Word version</span>
+    </a>
+  </footer>
+</div>
+
+</body>
+</html>

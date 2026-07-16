@@ -38,9 +38,20 @@ final class Score
 
     /** Tunables (documented judgment calls where the methodology is qualitative). */
     public const REPEAT_DAMP   = 0.5;  // historical 3-4yr chain interrupted by a clean latest year
-    public const TIMELY_DAMP_2 = 40;   // damped score for >=2 prior delinquent yrs when latest on-time
-    public const TIMELY_DAMP_1 = 20;   // damped score for 1 prior delinquent yr when latest on-time
-    public const DELINQUENT_DAYS = 365; // a fiscal year is "delinquent" if filed >1 year (365d) late
+    public const TIMELY_DAMP_2 = 40;   // damped score for >=2 prior severely-late yrs when latest on-time
+    public const TIMELY_DAMP_1 = 20;   // damped score for 1 prior severely-late yr when latest on-time
+    /**
+     * A fiscal year is SEVERELY LATE when its audit was filed more than 1 year (365 days) past
+     * the 2 CFR 200.512 deadline.
+     *
+     * Deliberately NOT named "delinquent". Everywhere else in AERO a delinquent audit is one that
+     * was NEVER FILED — Evaluation Level 1, whose walk (lib/Rules.php aero_filing_status) counts
+     * not-filed years and explicitly EXCLUDES late ones. This constant marks the opposite case:
+     * the audit exists, it just arrived very late. The old name meant the two disjoint senses
+     * shared a word, so "3 delinquent years" on the score card and "3 delinquent years" on the
+     * Evaluation described different facts about different years.
+     */
+    public const SEVERELY_LATE_DAYS = 365;
 
     // Component 3 questioned-cost DOLLAR bumps, added to the count base. Amounts come
     // from finding-text extraction (fac_finding_extract.qc_amount, trusted bases),
@@ -182,38 +193,46 @@ final class Score
                 'qc_dollars' => $dollars, 'qc_bump' => $bump];
     }
 
-    /** 4 — Reporting Timeliness (2 CFR 200.512): days late + delinquent years in window. */
+    /**
+     * 4 — Reporting Timeliness (2 CFR 200.512): how late the latest filing was, plus how many of
+     * the last 3 fiscal years were filed SEVERELY late (see SEVERELY_LATE_DAYS).
+     *
+     * This component reads LATE filings only. A never-filed year is Evaluation Level 1
+     * (lib/Rules.php), not a timeliness input — an entity that simply stopped filing is invisible
+     * here, because there is no submission date to be late.
+     */
     public static function reportingTimeliness(array $e, array $latest): array
     {
         $daysLate = $latest['days_late'];
         $onTime = ($daysLate === null) ? true : ((int) $daysLate <= 0);
 
-        // delinquent fiscal years in the most recent 3-year window (filed >90 days late)
+        // severely-late fiscal years in the most recent 3-year window (filed >365 days late)
         $ly = (int) $e['latest_year'];
-        $delinquent = 0;
+        $severelyLate = 0;
         $hasPriorYear = isset($e['by_year'][$ly - 1]);
         for ($y = $ly; $y >= $ly - 2; $y--) {
             if (isset($e['by_year'][$y]) && $e['by_year'][$y]['days_late'] !== null
-                && (int) $e['by_year'][$y]['days_late'] > self::DELINQUENT_DAYS) {
-                $delinquent++;
+                && (int) $e['by_year'][$y]['days_late'] > self::SEVERELY_LATE_DAYS) {
+                $severelyLate++;
             }
         }
 
         if ($onTime && $hasPriorYear) {
-            // damped path: prior delinquency does not dominate when the latest filing is clean
-            $base = $delinquent >= 2 ? self::TIMELY_DAMP_2 : ($delinquent === 1 ? self::TIMELY_DAMP_1 : 0);
-            $damped = $delinquent > 0;
+            // damped path: prior lateness does not dominate when the latest filing is clean
+            $base = $severelyLate >= 2 ? self::TIMELY_DAMP_2 : ($severelyLate === 1 ? self::TIMELY_DAMP_1 : 0);
+            $damped = $severelyLate > 0;
         } else {
             $damped = false;
-            if ($delinquent >= 2)            $base = 100;
-            elseif ($delinquent === 1)       $base = 85;
+            if ($severelyLate >= 2)          $base = 100;
+            elseif ($severelyLate === 1)     $base = 85;
             elseif ($daysLate !== null && $daysLate > 365)  $base = 85;
             elseif ($daysLate !== null && $daysLate >= 91)  $base = 55;
             elseif ($daysLate !== null && $daysLate >= 1)   $base = 25;
             else                             $base = 0;
         }
         return ['score' => self::clamp($base),
-                'days_late' => $daysLate === null ? null : (int) $daysLate, 'delinquent_years' => $delinquent, 'damped' => $damped];
+                'days_late' => $daysLate === null ? null : (int) $daysLate,
+                'severely_late_years' => $severelyLate, 'damped' => $damped];
     }
 
     /** 5 — Cash & Financial Management (2 CFR 200.302/.305): type B/C/J findings + persistence. */

@@ -1,5 +1,76 @@
 [
     {
+        "date":  "2026-07-15 20:28",
+        "commit":  "f58ea92",
+        "changes":  [
+                        "Merge pull request #22 from wesyon/fix/signals-delinquency-port",
+                        "Signals delinquency port; stop flagging governments for changing their UEI"
+                    ]
+    },
+    {
+        "date":  "2026-07-15 19:05",
+        "commit":  "abe1427",
+        "changes":  [
+                        "Merge pull request #21 from wesyon/fix/score-delinquent-naming",
+                        "Score: rename DELINQUENT_DAYS -\u003e SEVERELY_LATE_DAYS (one word, one meaning)"
+                    ]
+    },
+    {
+        "date":  "2026-07-15 18:53",
+        "commit":  "00d932a",
+        "changes":  [
+                        "Merge pull request #20 from wesyon/fix/audit-due-confirmation",
+                        "Search \"Audit Due\": stop asserting a delinquency the app won\u0027t confirm",
+                        "Merge pull request #19 from wesyon/fix/delinquency-kernel-consolidation"
+                    ]
+    },
+    {
+        "date":  "2026-07-15 18:03",
+        "commit":  "d34d41c",
+        "changes":  [
+                        "Don\u0027t render an out-of-scope entity as Clean",
+                        "Fix the map\u0027s Level 1: confirm by award activity, not the proxy alone",
+                        "Consolidate the Level-1 missing-year walk into lib/Rules.php"
+                    ]
+    },
+    {
+        "date":  "2026-07-15 16:57",
+        "commit":  "91b3069",
+        "changes":  [
+                        "Crosswalk note: split the 46 proposed from the 40 that resolve to FAC detail",
+                        "Drop the client DataReview workbooks (~1.3 MB of xlsx)",
+                        "Preserve the state-group crosswalk inputs; record 46 proposed members as pending",
+                        "Add the fraud legislative priorities packet and HHS data call submission",
+                        "subaward_edge: make keep-set membership a flag, so local can hold every edge",
+                        "Retire the :8099 control plane for the shared _dev panel; fix the mirror port",
+                        "Publish the HRSA Single Audit Methodology Review under /hrsa/",
+                        "sync_sam: prune superseded extracts after a successful load",
+                        "Park the SEFA-based \"Funding sources\" trace + SF-SAC reliability calibration",
+                        "AWS GovCloud scenario + OCIO intake form responses (both clouds)",
+                        "Cloud performance prep: OPcache + JSON compression in container, opt-in persistent DB connections",
+                        "Outlay sync --related: include curated components (entity_related_uei)",
+                        "Azure Gov hosting prep: Db TLS support, container stack, client docs",
+                        "Merge pull request #18 from wesyon/fix/fac-safe-snapshot-guard",
+                        "Merge pull request #17 from wesyon/perf/drop-dead-indexes",
+                        "Merge pull request #16 from wesyon/fix/etl-robustness",
+                        "Merge pull request #15 from wesyon/fix/prune-prod-safe-cfda",
+                        "Merge pull request #14 from wesyon/fix/sam-exclusion-drop-dead-key",
+                        "Merge pull request #13 from wesyon/perf/subaward-edge-year-index",
+                        "Merge pull request #12 from wesyon/fix/usa-awards-month-scoping",
+                        "Merge pull request #11 from wesyon/fix/orphan-month-reaper",
+                        "Merge pull request #10 from wesyon/chore/npm-audit-hard-gate",
+                        "Merge pull request #9 from wesyon/fix/replace-react-simple-maps",
+                        "Merge pull request #8 from wesyon/fix/l1-delinquency-reconcile",
+                        "Merge pull request #7 from wesyon/fix/fac-additional-ueis-indexes",
+                        "Merge pull request #6 from wesyon/fix/frontend-error-boundary",
+                        "Merge pull request #5 from wesyon/fix/repeat-territory-scope",
+                        "Merge pull request #4 from wesyon/ci/github-actions",
+                        "Merge pull request #3 from wesyon/fix/cache-write-hardening",
+                        "Merge pull request #2 from wesyon/fix/fail-closed-app-env-gate",
+                        "Merge pull request #1 from wesyon/fix/migration-ledger-drift"
+                    ]
+    },
+    {
         "date":  "2026-07-10 18:31",
         "commit":  "54bc2a4",
         "changes":  [

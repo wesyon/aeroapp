@@ -128,6 +128,12 @@ $pdo->exec(
         total_amount     DECIMAL(18,2) NULL,
         max_amount       DECIMAL(18,2) NULL,
         alns             VARCHAR(255)  NULL,
+        -- 1 = prime OR sub is in the HHS keep-set. LOCAL holds EVERY FSRS edge so analysis can
+        -- see out-of-scope flows (e.g. a FEMA-only passthrough); only in_scope=1 rows ship to
+        -- prod, via deploy.ps1 -PushTable's --where=in_scope=1. Do NOT filter on this in app
+        -- queries: prod simply does not contain the out-of-scope rows, so the same query is
+        -- correct in both environments.
+        in_scope         TINYINT       NOT NULL DEFAULT 0,
         PRIMARY KEY (prime_entity_uei, sub_vendor_uei, year),
         KEY idx_subedge_sub (sub_vendor_uei),
         -- passthrough filters every query by year; this covers WHERE year=? plus the
@@ -135,7 +141,9 @@ $pdo->exec(
         -- prime-direction queries ORDER BY total DESC, so they filesort regardless — a
         -- (year, prime_entity_uei) index would earn nothing while costing ~9.5 MB on a
         -- quota-tight host. This index alone still turns their full scan into a year seek.
-        KEY idx_subedge_year_sub (year, sub_vendor_uei)
+        KEY idx_subedge_year_sub (year, sub_vendor_uei),
+        -- serves mysqldump --where=in_scope=1 on the prod push (and any local scope filter)
+        KEY idx_subedge_scope (in_scope)
      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
 );
 
@@ -154,26 +162,31 @@ echo "aggregating edges (this scans the detail table — a minute or two)...\n";
 $pdo->exec(
     "INSERT INTO subaward_edge
         (prime_entity_uei, sub_vendor_uei, year, prime_name, sub_name,
-         subawards, total_amount, max_amount, alns)
+         subawards, total_amount, max_amount, alns, in_scope)
      SELECT t.prime_entity_uei, t.sub_vendor_uei, t.yr,
             MAX(t.prime_entity_name), MAX(t.sub_vendor_name),
             COUNT(*), SUM(t.subaward_amount), MAX(t.subaward_amount),
-            LEFT(GROUP_CONCAT(DISTINCT t.aln ORDER BY t.aln SEPARATOR ', '), 255)
+            LEFT(GROUP_CONCAT(DISTINCT t.aln ORDER BY t.aln SEPARATOR ', '), 255),
+            MAX(t.in_scope)
      FROM (
         SELECT s.prime_entity_uei, s.sub_vendor_uei, s.prime_entity_name, s.sub_vendor_name,
                s.subaward_amount, s.total_fed_funding_amount, s.aln,
+               -- keep-set membership is now a FLAG, not a filter: local keeps every edge and
+               -- marks the in-scope ones. (Constant per (prime,sub) pair, so MAX() above is a
+               -- no-op aggregate that just carries it through the GROUP BY.)
+               (kp.uei IS NOT NULL OR ks.uei IS NOT NULL) AS in_scope,
                YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date)) yr,
                ROW_NUMBER() OVER (
                    PARTITION BY COALESCE(NULLIF(s.prime_award_key,''), NULLIF(s.fain,''), CAST(s.id AS CHAR)),
                                 COALESCE(NULLIF(s.subaward_number,''), CAST(s.id AS CHAR))
                    ORDER BY s.report_updated_date DESC, s.submitted_date DESC, s.id DESC) rn
         FROM sam_assistance_subaward s
+        LEFT JOIN _edge_keep kp ON kp.uei = s.prime_entity_uei   -- PK lookups; replace the two
+        LEFT JOIN _edge_keep ks ON ks.uei = s.sub_vendor_uei     -- IN (SELECT ..) semi-joins
         WHERE s.prime_entity_uei IS NOT NULL AND s.prime_entity_uei <> ''
           AND s.sub_vendor_uei  IS NOT NULL AND s.sub_vendor_uei  <> ''
           AND YEAR(COALESCE(s.subaward_date, s.base_obligation_date, s.submitted_date))
                 BETWEEN 2022 AND YEAR(CURDATE())
-          AND (s.prime_entity_uei IN (SELECT uei FROM _edge_keep)
-            OR s.sub_vendor_uei  IN (SELECT uei FROM _edge_keep))
      ) t
      WHERE t.rn = 1
        AND (t.total_fed_funding_amount IS NULL OR t.total_fed_funding_amount <= 0

@@ -228,6 +228,40 @@ if ($rows) {
     // lapsed) registration over the API-enriched placeholders ('ID Assigned' = UEI
     // issued but never registered, 'Not Found' = unknown to SAM's public API),
     // then the latest registration_date
+    // Level-1 delinquency inputs for the shown page (≤ limit rows), read by the SAME walk the
+    // Evaluation dashboard, the entity profile and the map precompute use (lib/Rules.php). This
+    // column used to run its own rule — latest-FYE + 21/33 months < today — which asserted
+    // "past due, not filed" with NO confirmation that an audit was still required (4,188 entities
+    // the canonical rule refuses to assert) while missing gap years entirely (1,182 real L1s whose
+    // next-due date is still in the future). Merged across the crosswalk group ($candOf), like the
+    // SAM lookup above: a government's filing history spans its UEI succession.
+    $walkFilings = [];      // uei => year => ['fy','orig','bi']
+    $walkIv = [];           // uei => [['Y-m-d' start, end], ...]
+    $walkSub = [];          // uei => year => true
+    if ($allCand) {
+        $cList = array_keys($allCand);
+        $cin2 = implode(',', array_fill(0, count($cList), '?'));
+        $st = $pdo->prepare("SELECT auditee_uei uei, audit_year yr, MAX(fy_end_date) fy, MIN(submitted_date) orig,
+                                    MAX(audit_period_covered = 'biennial') bi
+                             FROM fac_general WHERE auditee_uei IN ($cin2) AND fy_end_date IS NOT NULL
+                             GROUP BY auditee_uei, audit_year");
+        $st->execute($cList);
+        foreach ($st as $r2) {
+            $walkFilings[$r2['uei']][(int) $r2['yr']] = ['fy' => $r2['fy'], 'orig' => $r2['orig'], 'bi' => (int) $r2['bi'] === 1];
+        }
+        $st = $pdo->prepare("SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
+                             WHERE recipient_uei IN ($cin2) AND category IN ('grant','direct_payment')
+                               AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
+        $st->execute($cList);
+        foreach ($st as $r2) $walkIv[$r2['uei']][] = [$r2['s'], $r2['e']];
+        try {   // deploy-shipped aggregate; absent -> proxy + direct awards still apply (as elsewhere)
+            $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($cin2)
+                                 GROUP BY sub_vendor_uei, year");
+            $st->execute($cList);
+            foreach ($st as $r2) $walkSub[$r2['uei']][(int) $r2['year']] = true;
+        } catch (\Throwable $e) { /* no edge table */ }
+    }
+
     $samRank = fn (?string $st) => $st === 'Active' ? 3 : ($st === 'Not Found' ? 0 : ($st === 'ID Assigned' ? 1 : 2));
     $bestSam = function (array $cands) use ($samRow, $samRank) {
         $best = null;
@@ -292,21 +326,58 @@ if ($rows) {
         }
     }
 
-    $today = date('Y-m-d');
     foreach ($rows as &$r) {
         $f = $fac[$r['uei']] ?? null;
         $r['ein'] = $f['ein'] ?? null;
         [$r['obligated'], $r['outlays']] = $usaMoney[$r['uei']] ?? [null, null];
-        // next FY ends one year after the latest filed FY-end (two for a biennial
-        // filer); the audit is due 9 months after that (2 CFR 200.512) — 21 (or 33)
-        // clamped months total (lib/Rules.php; naive '+1 year +9 months' rolls
-        // Dec-31 to Oct-1).
-        $nextDue = str_ends_with((string) ($f['fyp'] ?? ''), '|biennial') ? 33 : 21;
-        $due = !empty($f['fye'])
-            ? date('Y-m-d', aero_add_months_clamped((string) $f['fye'], $nextDue))
-            : null;
-        $r['audit_due'] = $due;
-        $r['audit_overdue'] = $due !== null && $due < $today;
+
+        // Merge the group's filing history + award activity, then run the shared walk.
+        $cands = $candOf[$r['uei']] ?? [$r['uei']];
+        $fil = []; $iv = []; $sub = [];
+        foreach ($cands as $c) {
+            foreach ($walkFilings[$c] ?? [] as $yy => $x) {          // per year keep the earliest original filing
+                if (!isset($fil[$yy]) || ($x['orig'] !== null && $fil[$yy]['orig'] !== null
+                    && strtotime((string) $x['orig']) < strtotime((string) $fil[$yy]['orig']))) $fil[$yy] = $x;
+            }
+            foreach ($walkIv[$c] ?? [] as $p) $iv[] = $p;
+            foreach ($walkSub[$c] ?? [] as $yy => $_u) $sub[$yy] = true;
+        }
+        $missing = []; $unver = [];
+        if ($fil) {
+            $status = aero_filing_status($fil, aero_activity_confirmer($iv, $sub), (float) ($r['federal_latest'] ?? 0));
+            foreach ($status as $yy => $s2) {
+                if ($s2['st'] === 'missing') $missing[$yy] = $s2;
+                elseif ($s2['st'] === 'unverified') $unver[$yy] = $s2;
+            }
+        }
+        // The date is the OLDEST outstanding obligation, so it always matches the verdict beside
+        // it: a confirmed-delinquent recipient shows the deadline it actually blew (in the past),
+        // not the next audit on the calendar. Only when nothing is outstanding does it fall back
+        // to the next expected audit — 9 months after the next fiscal-year end (2 CFR 200.512):
+        // 21 clamped months from the latest FY-end, 33 for a biennial filer (2 CFR 200.504).
+        // aero_add_months_clamped, not a naive '+1 year +9 months', which rolls Dec-31 to Oct-1.
+        if ($missing) {
+            $y0 = min(array_keys($missing));
+            $r['audit_due']   = date('Y-m-d', aero_deadline9((string) $missing[$y0]['fy_end']));
+            $r['audit_state'] = 'missing';       // confirmed by award activity or the >= $2M proxy
+            $r['audit_years'] = count($missing);
+            $r['audit_from']  = $y0;
+        } elseif ($unver) {
+            $y0 = min(array_keys($unver));
+            $r['audit_due']   = date('Y-m-d', aero_deadline9((string) $unver[$y0]['fy_end']));
+            $r['audit_state'] = 'unverified';    // overdue, but we can't confirm one was required
+            $r['audit_years'] = count($unver);
+            $r['audit_from']  = $y0;
+        } else {
+            $nextDue = str_ends_with((string) ($f['fyp'] ?? ''), '|biennial') ? 33 : 21;
+            $r['audit_due']   = !empty($f['fye'])
+                ? date('Y-m-d', aero_add_months_clamped((string) $f['fye'], $nextDue))
+                : null;
+            $r['audit_state'] = 'current';
+            $r['audit_years'] = 0;
+            $r['audit_from']  = null;
+        }
+
         $s = $bestSam($candOf[$r['uei']] ?? [$r['uei']]);
         $r['reg_status'] = $s['registration_status'] ?? null;
         $r['reg_expires'] = $s['registration_expiration_date'] ?? null;

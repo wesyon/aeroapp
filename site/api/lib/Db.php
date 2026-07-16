@@ -9,7 +9,7 @@ final class Db
         $dsn  = Env::require('DB_DSN');
         $user = Env::get('DB_USER', 'root');
         $pass = Env::get('DB_PASSWORD', '');
-        return new PDO($dsn, $user, $pass, [
+        $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
@@ -18,7 +18,24 @@ final class Db
             // connection mid-run ("MySQL server has gone away"); keep the session
             // alive for 8h. Harmless for short-lived web requests.
             PDO::MYSQL_ATTR_INIT_COMMAND => 'SET SESSION wait_timeout = 28800',
-        ]);
+        ];
+        // Managed MySQL (Azure Database for MySQL, AWS RDS) rejects plaintext
+        // connections by default (require_secure_transport=ON), and PDO only
+        // negotiates TLS when a CA is configured. Point DB_SSL_CA at the
+        // provider's CA bundle to enable; leave unset where the server doesn't
+        // require TLS (local dev, current Hostinger socket).
+        $ca = Env::get('DB_SSL_CA');
+        if ($ca !== null && $ca !== '') {
+            $options[PDO::MYSQL_ATTR_SSL_CA] = $ca;
+        }
+        // Persistent connections: reuse the worker's connection across requests
+        // instead of paying connect+TLS per request — matters on managed cloud
+        // DBs (a network hop away). Opt-in via env: it must stay OFF on shared
+        // hosting, where held connections count against per-user caps.
+        if (in_array(strtolower((string) Env::get('DB_PERSISTENT', '')), ['1', 'true', 'yes', 'on'], true)) {
+            $options[PDO::ATTR_PERSISTENT] = true;
+        }
+        return new PDO($dsn, $user, $pass, $options);
     }
 }
 

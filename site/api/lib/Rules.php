@@ -3,9 +3,15 @@ declare(strict_types=1);
 
 /**
  * Shared 2 CFR part 200 rule helpers used by the routes (grantee, evaluation,
- * recipients) and the score pipeline (compute_scores). These were previously
- * transcribed independently at each call site, which is how recipients.php
- * ended up with a drifted (unclamped) copy of the deadline math.
+ * recipients), the score pipeline (compute_scores) and the map precompute
+ * (build_entity_map_point). These were previously transcribed independently at each
+ * call site, which is how recipients.php ended up with a drifted (unclamped) copy of
+ * the deadline math, and the map precompute with a proxy-only Level 1.
+ *
+ * Level-1 delinquency is the whole walk, not just its pieces: callers hand
+ * aero_filing_status() a filing history (+ an aero_activity_confirmer()) and read back a
+ * per-year status, rather than re-deriving the loop. Nothing below reads aero_score —
+ * a paused or stale score must never move a compliance determination.
  *
  * Plain guarded functions (like Normalize.php) so the file is safe to include
  * more than once, and unit-testable in isolation (api/tests/rules_test.php).
@@ -78,6 +84,138 @@ if (!function_exists('aero_add_months_clamped')) {
             return $activitySrc;
         }
         return $federalLatest >= $proxyThreshold ? 'proxy' : null;
+    }
+
+    /**
+     * Build the award-ACTIVITY confirmer aero_filing_status() consults for an overdue year:
+     * 'award' when a direct award's period of performance overlaps the fiscal year, else
+     * 'subaward' when an FSRS pass-through landed in (or within $subLookback years before) it,
+     * else null. Direct overlap is precise, so it wins the label over a year-granular subaward.
+     *
+     * Absence of activity is NOT evidence a year wasn't required (consolidated audit UEIs don't
+     * align to award UEIs, the $30k FSRS reporting floor, prime underreporting, pass-through
+     * invisibility), so a null here only ever downgrades a year to a caveated "verify" — it never
+     * removes a year the expenditure proxy would count.
+     *
+     * Both feeds carry dirty dates (observed years 0022..2209), so periods are clamped here rather
+     * than at each call site: an implausible start drops the row, a future end clamps to now. The
+     * signal is positive-only, so dropping a row is always safe.
+     *
+     * @param array $rawIntervals list of [start, end] direct-award periods as 'Y-m-d' strings
+     * @param array $subYears     year => true — FSRS pass-through years received as sub_vendor
+     */
+    function aero_activity_confirmer(array $rawIntervals, array $subYears, int $subLookback = 2): callable
+    {
+        $now = time();
+        $minPlausible = strtotime('1980-01-01');
+        $iv = [];
+        foreach ($rawIntervals as [$s, $e]) {
+            $s = is_int($s) ? $s : strtotime((string) $s);
+            $e = is_int($e) ? $e : strtotime((string) $e);
+            if ($s === false || $e === false || $s < $minPlausible) continue;   // drop implausible start
+            if ($e > $now) $e = $now;                                           // clamp dirty future end
+            if ($e >= $s) $iv[] = [$s, $e];
+        }
+        return static function (int $fyStartTs, int $fyEndTs) use ($iv, $subYears, $subLookback): ?string {
+            foreach ($iv as [$s, $e]) {
+                if ($s <= $fyEndTs && $e >= $fyStartTs) return 'award';          // period overlaps the FY
+            }
+            $lo = (int) date('Y', $fyStartTs) - $subLookback;
+            $hi = (int) date('Y', $fyEndTs);
+            foreach ($subYears as $yy => $_unused) {
+                if ($yy >= $lo && $yy <= $hi) return 'subaward';                 // pass-through in/just before FY
+            }
+            return null;
+        };
+    }
+
+    /**
+     * Per-year filing status across an entity's audit history — the ONE missing-year walk behind
+     * Level-1 delinquency on every surface (Evaluation dashboard, entity profile, map precompute).
+     * aero_l1_confirmed_by() is the per-year decision; this is the loop around it, which used to be
+     * transcribed at four call sites — which is how the map precompute ended up proxy-only, silently
+     * dropping the activity-confirmed sub-$2M entities the dashboard counts as Level 1.
+     *
+     * A year is 'missing' only when it is unfiled, past its 2 CFR 200.512 deadline, not inside a
+     * biennial period, AND confirmed by aero_l1_confirmed_by(); an unconfirmed overdue year is
+     * 'unverified' (surfaced as a caveat, never counted). Late-filed years are reported as 'late'
+     * but are NOT Level 1 — the level counts not-filed years only.
+     *
+     * Unfiled years get a synthetic fiscal-year end from the NEWEST filing's month/day, the only
+     * cadence evidence available (a mid-month/52-53-week FYE can drift a day; the deadline's
+     * month-end clamping absorbs it).
+     *
+     * @param array     $filings audit_year => ['fy' => 'Y-m-d', 'orig' => 'Y-m-d'|null, 'bi' => bool].
+     *                           'orig' = ORIGINAL submission date; null when the caller has no
+     *                           timeliness data (the map precompute) -> that year reports 'filed'.
+     * @param ?callable $confirm from aero_activity_confirmer(); null = no activity feed wired,
+     *                           so the expenditure proxy decides alone.
+     * @param float     $federalLatest latest FILED federal expenditures — fac_general.total_amount_expended
+     *                           or its entity.federal_latest denormalization, NEVER aero_score.
+     * @param ?int      $from    first year reported (default: earliest filed year)
+     * @param ?int      $to      last year reported (default: current calendar year)
+     * @return array year => ['st'           => 'ontime'|'late'|'filed'|'covered'|'na'|'pending'|'missing'|'unverified',
+     *                        'fy_end'       => 'Y-m-d'|null  (actual when filed, synthetic when projected),
+     *                        'days'         => ?int  (filed: days past deadline, negative = early;
+     *                                                 missing/unverified: days overdue),
+     *                        'confirmed_by' => ?string  ('award'|'subaward'|'proxy' on 'missing')]
+     */
+    function aero_filing_status(array $filings, ?callable $confirm, float $federalLatest, ?int $from = null, ?int $to = null): array
+    {
+        if (!$filings) return [];
+        $minY = min(array_keys($filings));
+        $lastY = max(array_keys($filings));
+        $bi = [];
+        foreach ($filings as $y => $x) {
+            if (!empty($x['bi'])) $bi[(int) $y] = true;
+        }
+        $lastFyTs = strtotime((string) $filings[$lastY]['fy']);
+        $fm = (int) date('n', $lastFyTs);
+        $fd = (int) date('j', $lastFyTs);
+        $from ??= $minY;
+        $to ??= (int) date('Y');
+        $now = time();
+        $out = [];
+        for ($y = $from; $y <= $to; $y++) {
+            if (isset($filings[$y])) {
+                $fy = (string) $filings[$y]['fy'];
+                $orig = $filings[$y]['orig'] ?? null;
+                if ($orig === null) {                       // no submission date -> can't judge timeliness
+                    $out[$y] = ['st' => 'filed', 'fy_end' => $fy, 'days' => null, 'confirmed_by' => null];
+                    continue;
+                }
+                // rounded to whole days: both sides are dated (midnight), so a fraction is only ever
+                // a DST artifact — rounding keeps 'late' from wobbling by an hour across the shift.
+                $days = (int) round((strtotime((string) $orig) - aero_deadline9($fy)) / 86400);
+                $out[$y] = ['st' => $days > 0 ? 'late' : 'ontime', 'fy_end' => $fy, 'days' => $days, 'confirmed_by' => null];
+                continue;
+            }
+            // biennial BEFORE the pre-history check: a biennial period's prior FY can precede $minY
+            if (aero_biennial_covered($y, $bi, $lastY)) {
+                $out[$y] = ['st' => 'covered', 'fy_end' => null, 'days' => null, 'confirmed_by' => null];
+                continue;
+            }
+            if ($y < $minY) {                               // before the filing history began
+                $out[$y] = ['st' => 'na', 'fy_end' => null, 'days' => null, 'confirmed_by' => null];
+                continue;
+            }
+            $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y);
+            $fyEnd = date('Y-m-d', $fyEndTs);
+            $dl = aero_deadline9($fyEnd);
+            if ($dl >= $now) {                              // trailing edge: not yet due
+                $out[$y] = ['st' => 'pending', 'fy_end' => $fyEnd, 'days' => null, 'confirmed_by' => null];
+                continue;
+            }
+            $src = $confirm ? $confirm(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs) : null;   // ~1yr FY window
+            $cb = aero_l1_confirmed_by($src, $federalLatest);
+            $out[$y] = [
+                'st'           => $cb !== null ? 'missing' : 'unverified',
+                'fy_end'       => $fyEnd,
+                'days'         => (int) floor(($now - $dl) / 86400),
+                'confirmed_by' => $cb,
+            ];
+        }
+        return $out;
     }
 
     /**

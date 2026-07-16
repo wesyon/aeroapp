@@ -12,9 +12,12 @@ declare(strict_types=1);
  *     government ZIPs — common for state agencies).
  *   - L2/L3/L4/L7: SQL flags off the latest audit (modified opinion / material weakness /
  *     questioned costs / any finding).
- *   - L1 (delinquent audits): the exact missing-year delinquency loop (2 CFR 200.512 deadline +
- *     biennial coverage + the federal >= $2M "likely" gate), via lib/Rules.php.
+ *   - L1 (delinquent audits): the shared missing-year walk (lib/Rules.php aero_filing_status) —
+ *     2 CFR 200.512 deadline + biennial coverage + the two-signal confirmation (award activity,
+ *     else the federal >= $2M proxy), identical to /api/evaluation and /api/grantee.
  *   - L5/L6 (2+yr vs 1st-yr repeats): the lineage-depth walk (lib/Lineage.php) — depth >= 3 = L5.
+ *   - UEI successions (state_uei): one dot per government, at its canonical UEI, with the group's
+ *     filing history merged into its L1 — matching /api/evaluation and /api/recipients.
  *
  * Re-runnable (full rebuild). Run after FAC sync + the zip_centroid seed.
  *   php api/sync/build_entity_map_point.php
@@ -23,7 +26,8 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 require $root . '/lib/Env.php';
 require $root . '/lib/Db.php';
-require $root . '/lib/Rules.php';      // aero_deadline9 / aero_biennial_covered / aero_first_prior
+require $root . '/lib/Rules.php';      // aero_filing_status / aero_activity_confirmer / aero_first_prior
+require $root . '/lib/UeiGroups.php';  // aero_uei_groups — collapse state_uei successions
 require $root . '/lib/Lineage.php';    // repeat-depth kernel (canonical Evaluation semantics)
 Env::load(dirname($root, 2) . '/.env');
 Env::load(dirname($root) . '/.env');
@@ -83,36 +87,92 @@ $pdo->exec("
   ) t
 ");
 
-// --- 2) L1 (delinquent audits): exact missing-year loop for federal >= $2M entities ---
+// --- 1b) UEI successions: one dot per government, at its CANONICAL UEI ---
+// A crosswalk government (state_uei) that changed UEI has a directory row per member, and both
+// were getting a dot — so a state appeared twice, and the RETIRED member read as a delinquent
+// entity that "stopped filing" (latest 2022) while the government has filed every year since
+// under its successor. That produced a false L1 dot for 9 of 19 member UEIs (AR/CO/DC/DE/NC/
+// OH/SC/VI/WV) — an accusation of delinquency for changing UEI. /api/evaluation and
+// /api/recipients both collapse the succession to the canonical member; this does the same,
+// and $groupOf below merges the whole group's filing history into that member's L1 walk.
+// Canonical = member with the latest active audit year, tie-break federal $ — lib/UeiGroups.php.
+$grp = aero_uei_groups($pdo);
+$groupOf = $grp['canon'];               // canonical uei => [member ueis] (multi-UEI groups only)
+$retired = array_keys($grp['retired']); // non-canonical member ueis — must not carry their own dot
+if ($retired) {
+    $st = $pdo->prepare("DELETE FROM entity_map_point WHERE uei IN (" . implode(',', array_fill(0, count($retired), '?')) . ")");
+    $st->execute($retired);
+    printf("  UEI successions: dropped %d retired member dot(s); %d government(s) collapsed to their canonical UEI\n",
+        $st->rowCount(), count($groupOf));
+}
+
+// --- 2) L1 (delinquent audits): the shared missing-year walk (lib/Rules.php) ---
 // L1 is the most severe level, so it overrides the provisional level above.
-$cand = $pdo->query("SELECT e.uei FROM entity e JOIN entity_map_point m ON m.uei = e.uei
-                     WHERE e.federal_latest >= 2000000")->fetchAll(PDO::FETCH_COLUMN);
+//
+// Candidates are EVERY mapped entity, not just federal >= $2M. The old >= $2M SQL prefilter
+// hard-coded the expenditure proxy as the only way to confirm a missing year, so this build
+// silently disagreed with the Evaluation dashboard and the profile, which also confirm via
+// award activity: a sub-$2M entity with a missing year covered by a live award or a
+// pass-through was Level 1 on those surfaces and unflagged on the map. aero_filing_status()
+// applies the same two-signal rule (activity, else proxy) to all of them.
+$cand = $pdo->query("SELECT e.uei FROM entity e JOIN entity_map_point m ON m.uei = e.uei")->fetchAll(PDO::FETCH_COLUMN);
 $l1 = [];
 foreach (array_chunk($cand, 5000) as $chunk) {
-    $in = implode(',', array_fill(0, count($chunk), '?'));
+    // Look data up for the chunk PLUS any retired siblings (dropped above, so absent from $cand):
+    // a government's L1 must be judged on its WHOLE history, not just its current UEI's slice.
+    $lookup = [];
+    foreach ($chunk as $u) {
+        $lookup[$u] = true;
+        foreach ($groupOf[$u] ?? [] as $m) $lookup[$m] = true;
+    }
+    $lk = array_keys($lookup);
+    $in = implode(',', array_fill(0, count($lk), '?'));
+    // federal_latest is the latest ACTIVE report's total_amount_expended (build_entity_directory.php)
+    // — the same FAC figure the routes use for the proxy, never aero_score. Read off the canonical
+    // member, which by definition holds the group's most recent audit (as recipients.php does).
+    $st = $pdo->prepare("SELECT uei, COALESCE(federal_latest, 0) fed FROM entity WHERE uei IN ($in)");
+    $st->execute($lk);
+    $fed = [];
+    foreach ($st as $r) $fed[$r['uei']] = (float) $r['fed'];
+
     $st = $pdo->prepare("SELECT auditee_uei uei, audit_year yr, MAX(fy_end_date) fy,
                                 MAX(audit_period_covered='biennial') bi
                          FROM fac_general WHERE auditee_uei IN ($in) AND fy_end_date IS NOT NULL
                          GROUP BY auditee_uei, audit_year");
-    $st->execute($chunk);
+    $st->execute($lk);
     $byUei = [];
-    foreach ($st as $r) $byUei[$r['uei']][(int) $r['yr']] = ['fy' => $r['fy'], 'bi' => (int) $r['bi'] === 1];
-    foreach ($byUei as $uei => $f) {
-        if (!$f) continue;
-        $fBi = [];
-        foreach ($f as $y => $x) if ($x['bi']) $fBi[$y] = true;
-        $lastYr = max(array_keys($f));
-        $fm = (int) date('n', strtotime($f[$lastYr]['fy']));
-        $fd = (int) date('j', strtotime($f[$lastYr]['fy']));
-        $missing = 0;
-        for ($y = min(array_keys($f)) + 1; $y <= (int) date('Y'); $y++) {
-            if (isset($f[$y])) continue;
-            if (aero_biennial_covered($y, $fBi, $lastYr)) continue;
-            $fyEnd = date('Y-m-d', mktime(0, 0, 0, $fm, $fd, $y));
-            if (aero_deadline9($fyEnd) >= time()) break;   // trailing edge: not yet due
-            $missing++;
+    // 'orig' => null: this build has no submitted_date, so filed years report 'filed' and
+    // timeliness is simply not judged here (the map shows levels, not lateness).
+    foreach ($st as $r) $byUei[$r['uei']][(int) $r['yr']] = ['fy' => $r['fy'], 'orig' => null, 'bi' => (int) $r['bi'] === 1];
+
+    // Award-activity signals — the confirmation the routes have always applied.
+    $iv = [];
+    $st = $pdo->prepare("SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
+                         WHERE recipient_uei IN ($in) AND category IN ('grant','direct_payment')
+                           AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
+    $st->execute($lk);
+    foreach ($st as $r) $iv[$r['uei']][] = [$r['s'], $r['e']];
+    $sy = [];
+    try {
+        $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($in)
+                             GROUP BY sub_vendor_uei, year");
+        $st->execute($lk);
+        foreach ($st as $r) $sy[$r['uei']][(int) $r['year']] = true;
+    } catch (\Throwable $e) { /* no edge table -> proxy + direct awards still apply (routes degrade the same way) */ }
+
+    foreach ($chunk as $uei) {                       // mapped entities only — never a retired sibling
+        $members = $groupOf[$uei] ?? [$uei];         // single-UEI entities: the group IS the entity
+        $f = []; $ivM = []; $syM = [];
+        foreach ($members as $m) {
+            foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }
+            foreach ($iv[$m] ?? [] as $p) $ivM[] = $p;
+            foreach ($sy[$m] ?? [] as $yy => $_u) $syM[$yy] = true;
         }
-        if ($missing > 0) $l1[] = $uei;
+        if (!$f) continue;
+        $status = aero_filing_status($f, aero_activity_confirmer($ivM, $syM), $fed[$uei] ?? 0.0);
+        foreach ($status as $s) {
+            if ($s['st'] === 'missing') { $l1[] = $uei; break; }   // >= 1 confirmed missing year = L1
+        }
     }
 }
 foreach (array_chunk($l1, 5000) as $chunk) {

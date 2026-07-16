@@ -103,10 +103,9 @@ $all = $groups ? array_merge(...array_column($groups, 'ueis')) : [];
 if (!$all) json_out(['states' => [], 'type' => $type, 'total' => 0, 'capped' => false, 'generated_at' => date('c')]);
 $in = implode(',', array_fill(0, count($all), '?'));
 
-/** 2 CFR 200.512 deadline (lib/Rules.php, unit-tested; same source as grantee.php). */
-$dl9 = static fn (string $fy): int => aero_deadline9($fy);
-
-// (A) filings per uei/year — delinquency source (original submission per audit year)
+// (A) filings per uei/year — delinquency source (original submission per audit year).
+// The 2 CFR 200.512 deadline is applied inside aero_filing_status() (lib/Rules.php,
+// unit-tested), not transcribed here.
 $st = $pdo->prepare(
     "SELECT auditee_uei uei, audit_year yr, MAX(fy_end_date) fy, MIN(submitted_date) orig,
             MAX(audit_period_covered = 'biennial') bi
@@ -133,28 +132,24 @@ foreach ($st as $r) {
 // and FSRS pass-through subaward years (subaward_edge), the SAME confirmation /api/grantee uses,
 // batched here across the cohort instead of per entity. subaward_edge is a deploy-shipped
 // aggregate that may not exist yet -> degrade to no-subaward-signal (proxy/direct still apply).
-$directIntervals = [];   // uei => [[startTs, endTs], ...]
+// Dirty dates are clamped inside aero_activity_confirmer(), so rows are collected raw here.
+$directIntervals = [];   // uei => [['Y-m-d' start, 'Y-m-d' end], ...]
 $subYears = [];          // uei => [year => true]
-$NOW_TS = time(); $MIN_PLAUSIBLE = strtotime('1980-01-01');
 $st = $pdo->prepare(
     "SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
      WHERE recipient_uei IN ($in) AND category IN ('grant','direct_payment')
        AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
 $st->execute($all);
-foreach ($st as $r) {
-    $s = strtotime((string) $r['s']); $e = strtotime((string) $r['e']);
-    if ($s === false || $e === false || $s < $MIN_PLAUSIBLE) continue;   // drop implausible start
-    if ($e > $NOW_TS) $e = $NOW_TS;                                      // clamp dirty future end
-    if ($e >= $s) $directIntervals[$r['uei']][] = [$s, $e];
-}
+foreach ($st as $r) $directIntervals[$r['uei']][] = [$r['s'], $r['e']];
 try {
     $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($in) GROUP BY sub_vendor_uei, year");
     $st->execute($all);
     foreach ($st as $r) $subYears[$r['uei']][(int) $r['year']] = true;
 } catch (\Throwable $e) { /* no edge table -> subaward confirmation unavailable; proxy + direct awards still apply */ }
 
-// (C) AERO scores (composite/tier for context; federal_latest gates missing-year
-// delinquency; trend powers the momentum view)
+// (C) AERO scores — CONTEXT ONLY (composite/tier display, trend powers the momentum view).
+// federal_latest here is display/tie-break; the Level-1 proxy reads fac_general instead
+// (see $federalLatest below), so a paused or stale score can't move a delinquency call.
 $st = $pdo->prepare("SELECT uei, recipient_name, composite_score, tier, federal_latest, trend FROM aero_score WHERE uei IN ($in)");
 $st->execute($all);
 $scores = [];
@@ -202,11 +197,10 @@ foreach ($groups as $g) {
         $cand = [$ly, (float) ($scores[$u]['federal_latest'] ?? 0)];
         if ($cand > $best) { $best = $cand; $uei = $u; }
     }
-    $f = []; $fBi = []; $reps = []; $fnd = [];
+    $f = []; $reps = []; $fnd = [];
     foreach ($g['ueis'] as $u) {
         foreach ($filings[$u] ?? [] as $yr => $x) {                            // per year keep the earliest original filing
             if (!isset($f[$yr]) || strtotime($x['orig']) < strtotime($f[$yr]['orig'])) $f[$yr] = $x;
-            if ($x['bi']) $fBi[$yr] = true;                                    // biennial covers $yr-1 too (2 CFR 200.504)
         }
         $reps += $activeRep[$u] ?? [];
         if (isset($findings[$u])) $fnd = array_merge($fnd, $findings[$u]);
@@ -219,61 +213,38 @@ foreach ($groups as $g) {
             $flYear = $yr; $federalLatest = (float) ($repExp[$rid] ?? 0);
         }
     }
-    // Per-group award-activity confirmation over the merged UEI set (mirrors grantee.php's $confirmActivity).
+    // Per-group award-activity confirmation over the merged UEI set (lib/Rules.php — the same
+    // confirmer grantee.php and the map precompute build).
     $grpIntervals = []; $grpSubYears = [];
     foreach ($g['ueis'] as $u) {
         foreach ($directIntervals[$u] ?? [] as $iv) $grpIntervals[] = $iv;
         foreach ($subYears[$u] ?? [] as $yy => $_unused) $grpSubYears[$yy] = true;
     }
-    $confirmActivity = function ($fyStartTs, $fyEndTs) use ($grpIntervals, $grpSubYears) {
-        foreach ($grpIntervals as [$s, $e]) { if ($s <= $fyEndTs && $e >= $fyStartTs) return 'award'; }
-        $lo = (int) date('Y', $fyStartTs) - 2; $hi = (int) date('Y', $fyEndTs);   // 2yr pass-through lookback
-        foreach ($grpSubYears as $yy => $_unused) { if ($yy >= $lo && $yy <= $hi) return 'subaward'; }
-        return null;
-    };
+    $confirmActivity = aero_activity_confirmer($grpIntervals, $grpSubYears);
+
+    // The shared missing-year walk (lib/Rules.php) — one status per year, read two ways below.
+    // Range runs past the current year if a filing does, so the late tally can't miss one.
+    $nowY = (int) date('Y');
+    $status = aero_filing_status($f, $confirmActivity, $federalLatest, null, max($nowY, $f ? max(array_keys($f)) : $nowY));
 
     // Level 1 — NOT-FILED (missing & overdue) years only; late-filed years are tallied
     // and emitted as reference but no longer trigger the level (grantee.php matches).
     $late = 0; $missing = 0; $unverified = 0; $missingYrs = [];
-    if ($f) {
-        foreach ($f as $x) {
-            if ((strtotime($x['orig']) - $dl9($x['fy'])) / 86400 > 0) $late++;
-        }
-        $lastYr = max(array_keys($f));
-        $lastFy = $f[$lastYr]['fy'];
-        $fm = (int) date('n', strtotime($lastFy)); $fd = (int) date('j', strtotime($lastFy));
-        for ($y = min(array_keys($f)) + 1; $y <= (int) date('Y'); $y++) {
-            if (isset($f[$y])) continue;
-            if (aero_biennial_covered($y, $fBi, $lastYr)) continue;            // inside a biennial period
-            $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y);
-            if ($dl9(date('Y-m-d', $fyEndTs)) >= time()) break;                // trailing edge: not yet due
-            $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);
-            if (aero_l1_confirmed_by($src, $federalLatest) !== null) { $missing++; $missingYrs[] = $y; }
-            else $unverified++;
-        }
+    foreach ($status as $y => $s) {
+        if ($s['st'] === 'late') $late++;
+        elseif ($s['st'] === 'missing') { $missing++; $missingYrs[] = $y; }
+        elseif ($s['st'] === 'unverified') $unverified++;
     }
 
-    // filing punch-card: per-year status over the last 6 audit years (same rules as the
-    // L1 count above, but emitted for EVERY year so on-time/pending years show too)
+    // filing punch-card: per-year status over the last 6 audit years — the same walk as the
+    // L1 count above, just widened so on-time/pending/covered years show too
     $filingYears = [];
-    $nowY = (int) date('Y');
-    $minY = $f ? min(array_keys($f)) : null;
+    $card = $f ? aero_filing_status($f, $confirmActivity, $federalLatest, $nowY - 5, $nowY) : [];
     for ($y = $nowY - 5; $y <= $nowY; $y++) {
-        if (!$f) { $filingYears[$y] = ['st' => 'na']; continue; }
-        if (isset($f[$y])) {
-            $days = (int) round((strtotime($f[$y]['orig']) - $dl9($f[$y]['fy'])) / 86400);
-            $filingYears[$y] = $days > 0 ? ['st' => 'late', 'days' => $days] : ['st' => 'ontime'];
-            continue;
-        }
-        // covered before the pre-history 'na': a biennial's prior FY can precede $minY
-        if (aero_biennial_covered($y, $fBi, $lastYr)) { $filingYears[$y] = ['st' => 'covered']; continue; }
-        if ($y < $minY) { $filingYears[$y] = ['st' => 'na']; continue; }
-        $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y);
-        if ($dl9(date('Y-m-d', $fyEndTs)) >= time()) $filingYears[$y] = ['st' => 'pending'];
-        else {
-            $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);
-            $filingYears[$y] = ['st' => aero_l1_confirmed_by($src, $federalLatest) !== null ? 'missing' : 'unverified'];
-        }
+        $st6 = $card[$y]['st'] ?? 'na';
+        $filingYears[$y] = $st6 === 'late'
+            ? ['st' => 'late', 'days' => $card[$y]['days']]
+            : ['st' => $st6];
     }
 
     // Levels 2–7 — latest active audit only (flags, QC dollars, repeat lineage)

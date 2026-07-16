@@ -156,10 +156,18 @@ if (isset($args['award'])) {
         foreach (preg_split('/\R+/', (string) $gu) ?: [] as $u) { if (($u = trim($u)) !== '') $set[] = $u; }
     }
     if (isset($args['related'])) {
+        // Declared components (fac_additional_ueis) UNION curated components (entity_related_uei) —
+        // the same member expansion sync_usa.php/sync_usa_txns.php use. States like NY/OK declare
+        // ZERO additional UEIs (their components live only in the curated table), so without the
+        // union this collapsed to the parent's handful of awards.
         $self = array_values(array_unique($set));
-        $m = $pdo->prepare("SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ("
-            . implode(',', array_fill(0, count($self), '?')) . ")");
-        $m->execute($self);
+        $selfPh = implode(',', array_fill(0, count($self), '?'));
+        $m = $pdo->prepare(
+            "SELECT DISTINCT additional_uei FROM fac_additional_ueis WHERE auditee_uei IN ($selfPh)
+             UNION
+             SELECT DISTINCT related_uei FROM entity_related_uei WHERE uei IN ($selfPh)"
+        );
+        $m->execute(array_merge($self, $self));
         foreach ($m->fetchAll(PDO::FETCH_COLUMN) as $u) { if ($u !== null && $u !== '') $set[] = $u; }
     }
     $set = array_values(array_unique(array_filter($set)));

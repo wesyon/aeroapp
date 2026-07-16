@@ -279,38 +279,10 @@ $audits = array_map(function ($a) use ($dl9, $uei) {
     ];
 }, $auStmt->fetchAll());
 
-// Missing / overdue audit years: gaps in the filed sequence (and trailing years)
-// whose 9-month deadline has already passed. fy-end pattern taken from the latest
-// filed audit. Surfaced as rows so delinquency is visible in the audit history.
-// Biennial filers (2 CFR 200.504): years inside a two-year audit period are
-// covered, not missing — aero_biennial_covered() skips them.
-if ($audits) {
-    $filedSet = array_fill_keys(array_column($audits, 'audit_year'), true);
-    $biennialFiled = [];
-    foreach ($audits as $a) {
-        if ($a['period'] === 'biennial') $biennialFiled[$a['audit_year']] = true;
-    }
-    $lastFiledY = max(array_keys($filedSet));
-    $fyRef = $audits[0]['fy_end_date'];   // ordered DESC → newest first
-    if ($fyRef) {
-        $fm = (int) date('n', strtotime($fyRef));
-        $fd = (int) date('j', strtotime($fyRef));
-        for ($y = min(array_keys($filedSet)); $y <= (int) date('Y'); $y++) {
-            if (isset($filedSet[$y])) continue;
-            if (aero_biennial_covered($y, $biennialFiled, $lastFiledY)) continue;
-            $fyEnd = date('Y-m-d', mktime(0, 0, 0, $fm, $fd, $y));
-            if ($dl9($fyEnd) >= time()) continue;   // not yet overdue
-            $audits[] = [
-                'report_id' => null, 'audit_year' => $y, 'fy_end_date' => $fyEnd,
-                'expended' => null, 'findings' => null, 'caps' => null,
-                'mw' => 0, 'qc' => 0, 'repeat' => 0,
-                // not filed: days late keeps counting from the 9-month deadline
-                'days_late' => (int) floor((time() - $dl9($fyEnd)) / 86400),
-                'accepted' => null, 'opinion' => null, 'missing' => true,
-            ];
-        }
-    }
-}
+// Missing / overdue audit years are surfaced as rows in this history too, so delinquency is
+// visible and not just a number. They're appended once the shared missing-year walk has run
+// (see $missingYearRows below) — the table and the Level-1 count read the SAME walk, rather
+// than each projecting overdue years their own way.
 
 // findings severity rollup (active reports only — superseded resubmissions excluded)
 $fsStmt = $pdo->prepare(
@@ -461,97 +433,91 @@ $cognizant = $cogCode ? ['code' => $cogCode, 'name' => $agNames[$cogCode] ?? nul
 
 // Delinquent audits (also the Evaluation framework's Level 1): audit years filed past
 // the 9-month deadline (2 CFR 200.512), PLUS years now missing & overdue (no audit =
-// no visibility). Computed once here so the attention card and the Evaluation tab
-// agree; lateness/overdue checks use the shared $dl9 deadline defined above.
+// no visibility). Computed once here so the attention card, the audit-history table and
+// the Evaluation tab agree — all three read the one walk in lib/Rules.php.
 $delinqLate = 0; $delinqMissing = 0; $delinqMissingUnverified = 0;
 $delinqYears = [];   // specific years for the Level 1 drill-down
-$filedYears = []; $biennialYears = []; $lastFy = null; $lastFiledYear = null;
+$filings = [];       // audit_year => ['fy', 'orig', 'bi'] — the shared walk's input
+// fy_end_date is required (it anchors the deadline), but submitted_date is NOT filtered on:
+// a year that HAS a report is filed regardless of whether FAC dated it. Requiring it here
+// would drop such a year from the walk's input and re-surface it as "missing" — an audit that
+// exists, reported as never filed. MIN() skips NULLs, and the walk reports a year with no
+// submission date as 'filed' (timeliness simply unknown) rather than late or missing.
 $dStmt = $pdo->prepare("SELECT audit_year, MAX(fy_end_date) fy, MIN(submitted_date) orig,
                                MAX(audit_period_covered = 'biennial') bi FROM fac_general
-                        WHERE auditee_uei IN ($IN) AND fy_end_date IS NOT NULL AND submitted_date IS NOT NULL GROUP BY audit_year");
+                        WHERE auditee_uei IN ($IN) AND fy_end_date IS NOT NULL GROUP BY audit_year");
 $dStmt->execute($ueiSet);
 foreach ($dStmt as $r) {
-    $y = (int) $r['audit_year'];
-    $filedYears[$y] = true;
-    if ((int) $r['bi'] === 1) $biennialYears[$y] = true;
-    $daysLate = (strtotime($r['orig']) - $dl9($r['fy'])) / 86400;
-    if ($daysLate > 0) { $delinqLate++; $delinqYears[] = ['year' => $y, 'status' => 'late', 'days' => (int) round($daysLate)]; }
-    if ($lastFiledYear === null || $y > $lastFiledYear) { $lastFiledYear = $y; $lastFy = $r['fy']; }
+    $filings[(int) $r['audit_year']] = ['fy' => $r['fy'], 'orig' => $r['orig'], 'bi' => (int) $r['bi'] === 1];
 }
-if ($lastFy !== null) {                                                            // project missing/overdue years
-    // A Single Audit is only required at >= the ~$1M threshold, which we can't verify
-    // for an unfiled year (the SEFA total only exists in FAC if they filed). Two signals
-    // decide whether a missing year counts:
-    //   (1) PROXY (fallback): the most recent filed expenditures are well above the
-    //       threshold, so the recipient is near-certainly still required.
-    //   (2) AWARD ACTIVITY (upgrade, positive-only): USAspending/FSRS shows the recipient
-    //       had federal activity covering that FY — a direct award (grant/direct_payment)
-    //       whose period of performance overlaps it, or an FSRS pass-through subaward
-    //       (recipient as sub_vendor) dated in/just before it. This confirms sub-$2M
-    //       recipients that are clearly still federally active. Absence of activity is NOT
-    //       informative (consolidated audit UEIs don't align to award UEIs, the $30k FSRS
-    //       floor, prime underreporting, pass-through invisibility), so it never REMOVES a
-    //       year the proxy would count. Otherwise -> caveated "verify" flag, not counted.
-    $fm = (int) date('n', strtotime($lastFy)); $fd = (int) date('j', strtotime($lastFy));
-
-    // Pull the award-activity signals once, clamping the dirty dates seen in both feeds
-    // (years 0022..2209). Positive-only, so dropping an implausible row is always safe.
-    $NOW_TS = time(); $MIN_PLAUSIBLE = strtotime('1980-01-01'); $SUB_LOOKBACK = 2;  // yrs pass-through stays expendable
-    $directIntervals = [];                                                         // [startTs, endTs] of direct awards
+$missingYearRows = [];   // year => fyEnd/days — the audit-history table's projected rows
+if ($filings) {
+    // A Single Audit is only required at >= the ~$1M threshold, which we can't verify for an
+    // unfiled year (the SEFA total only exists in FAC if they filed), so two signals decide
+    // whether a missing year counts — the expenditure PROXY and USAspending/FSRS award
+    // ACTIVITY. Both live in lib/Rules.php (aero_filing_status / aero_activity_confirmer),
+    // shared with /api/evaluation and the map precompute so the surfaces can't drift.
+    $directIntervals = [];                                                        // ['Y-m-d' start, end] of direct awards
     $apStmt = $pdo->prepare(
         "SELECT period_start_date s, period_end_date e FROM usa_award
          WHERE recipient_uei IN ($IN) AND category IN ('grant','direct_payment')
            AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
     $apStmt->execute($ueiSet);
-    foreach ($apStmt as $r) {
-        $s = strtotime($r['s']); $e = strtotime($r['e']);
-        if ($s === false || $e === false || $s < $MIN_PLAUSIBLE) continue;         // drop implausible start
-        if ($e > $NOW_TS) $e = $NOW_TS;                                            // clamp dirty future end
-        if ($e >= $s) $directIntervals[] = [$s, $e];
-    }
+    foreach ($apStmt as $r) $directIntervals[] = [$r['s'], $r['e']];
     // FSRS pass-through subaward YEARS the entity received (as sub). Read from the
     // subaward_edge aggregate, NOT the multi-GB sam_assistance_subaward detail — the
     // detail table is local-only (built by build_subaward_edge.php); prod ships only the
-    // edge. Year granularity is sufficient for the FY-window activity check below.
+    // edge. Year granularity is sufficient for the FY-window activity check.
     $subYears = [];
     $psStmt = $pdo->prepare(
         "SELECT DISTINCT year FROM subaward_edge WHERE sub_vendor_uei IN ($IN)");
     $psStmt->execute($ueiSet);
     foreach ($psStmt as $r) { $subYears[(int) $r['year']] = true; }
-    // Confirm fiscal year [$fyStartTs, $fyEndTs]? Direct period overlap (precise) beats a
-    // year-granular subaward, so it wins the label. Returns 'award' | 'subaward' | null.
-    $confirmActivity = function ($fyStartTs, $fyEndTs) use ($directIntervals, $subYears, $SUB_LOOKBACK) {
-        foreach ($directIntervals as [$s, $e]) {
-            if ($s <= $fyEndTs && $e >= $fyStartTs) return 'award';               // period overlaps the FY
-        }
-        $loYear = (int) date('Y', $fyStartTs) - $SUB_LOOKBACK;
-        $hiYear = (int) date('Y', $fyEndTs);
-        foreach ($subYears as $yy => $_unused) {
-            if ($yy >= $loYear && $yy <= $hiYear) return 'subaward';              // pass-through in/just before FY
-        }
-        return null;
-    };
 
-    // GAP years between filings count too (filing both neighbours makes the requirement
-    // near-certain) — the same year set the audit-history table surfaces as missing rows.
-    for ($y = min(array_keys($filedYears)) + 1; $y <= (int) date('Y'); $y++) {
-        if (isset($filedYears[$y])) continue;                                     // filed
-        if (aero_biennial_covered($y, $biennialYears, $lastFiledYear)) continue;  // inside a biennial period (2 CFR 200.504)
-        $fyEndTs = mktime(0, 0, 0, $fm, $fd, $y); $fyEnd = date('Y-m-d', $fyEndTs);
-        if ($dl9($fyEnd) >= time()) break;                                        // trailing edge: not yet due
-        $src = $confirmActivity(mktime(0, 0, 0, $fm, $fd, $y - 1), $fyEndTs);     // ~1yr FY window
-        // shared Level-1 decision (lib/Rules.php) — the same rule /api/evaluation uses
-        $cb = aero_l1_confirmed_by($src, (float) ($federalLatest ?? 0));
-        if ($cb !== null) {                                                       // activity- or proxy-confirmed
-            $delinqMissing++; $delinqYears[] = ['year' => $y, 'status' => 'missing', 'confirmed_by' => $cb];
-        } else {
-            $delinqMissingUnverified++;                                          // overdue but unconfirmed -> verify
+    $nowY = (int) date('Y');
+    $status = aero_filing_status(
+        $filings,
+        aero_activity_confirmer($directIntervals, $subYears),
+        (float) ($federalLatest ?? 0),
+        null,
+        max($nowY, max(array_keys($filings)))
+    );
+    // Late years first, then missing — the drill-down's existing grouping.
+    foreach ($status as $y => $s) {
+        if ($s['st'] === 'late') { $delinqLate++; $delinqYears[] = ['year' => $y, 'status' => 'late', 'days' => $s['days']]; }
+    }
+    foreach ($status as $y => $s) {
+        if ($s['st'] === 'missing') {
+            $delinqMissing++;
+            $delinqYears[] = ['year' => $y, 'status' => 'missing', 'confirmed_by' => $s['confirmed_by']];
+        } elseif ($s['st'] === 'unverified') {
+            $delinqMissingUnverified++;                                           // overdue but unconfirmed -> verify
+        }
+        // The audit-history table shows every overdue gap — confirmed or not — so a year the
+        // count can't assert is still visible rather than silently dropped. 'confirmed_by' is
+        // what separates the two there (null = the caveated "verify" case).
+        if ($s['st'] === 'missing' || $s['st'] === 'unverified') {
+            $missingYearRows[$y] = ['fy_end' => $s['fy_end'], 'days' => $s['days'], 'confirmed_by' => $s['confirmed_by']];
         }
     }
 }
 // Level 1 counts NOT-FILED (missing & overdue) years only; late-filed years remain in
 // $delinqYears as reference but no longer trigger the level.
 $delinquentAudits = $delinqMissing;
+
+// Project those overdue years into the audit history (see the note in the $audits section).
+// Appended after the real reports, which are ordered newest-first.
+foreach ($missingYearRows as $y => $m) {
+    $audits[] = [
+        'report_id' => null, 'audit_year' => $y, 'fy_end_date' => $m['fy_end'],
+        'expended' => null, 'findings' => null, 'caps' => null,
+        'mw' => 0, 'qc' => 0, 'repeat' => 0,
+        // not filed: days late keeps counting from the 9-month deadline
+        'days_late' => $m['days'],
+        'accepted' => null, 'opinion' => null, 'missing' => true,
+        'confirmed_by' => $m['confirmed_by'],   // null = overdue but unconfirmed ("verify")
+    ];
+}
 
 // cumulative finding rollup (on file across the recipient's audits)
 $findCum = [

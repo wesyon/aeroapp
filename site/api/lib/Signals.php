@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+// Guarded plain functions, so requiring it here is safe whether the caller is the CLI builder
+// (which loads only Env/Db/Signals) or the route front controller (which already loaded it).
+require_once __DIR__ . '/Rules.php';
+require_once __DIR__ . '/UeiGroups.php';   // aero_uei_groups — collapse state_uei successions
+
 /**
  * AERO Signals — anomaly & integrity indicator kernel.
  *
@@ -42,6 +47,8 @@ final class Signals
     const ADDL_UEI_MIN              = 3;                   // IDENTIFIER_LAYERING min additional UEIs
     const DUP_MIN_REPEATS           = 5;                   // DUPLICATE_AMOUNT same figure N+ times in a report
     const NAME_DISTINCT_MIN         = 2;                   // NAME_VOLATILITY distinct normalized names
+    const BURST_MIN_FEDERAL         = 5_000_000;           // BURST_VANISH: "large" last funded year
+    const BURST_MIN_MISSING         = 2;                   // BURST_VANISH: gone for >= this many expected audits
     const SHOCK_MULT                = 5.0;                 // FUNDING_SHOCK YoY multiple
     const SHOCK_MIN_HI              = 1_000_000;           // ... with the higher year over this
     const NEWUEI_MAX_MONTHS         = 18;                  // NEW_UEI_FAST_MONEY reg->first-seen gap
@@ -80,8 +87,9 @@ final class Signals
             'label' => 'No audit review window', 'blurb' => 'The auditor certified before the auditee (common enough to be context, not a standalone flag).'],
         'RESUB_CHURN'             => ['tier' => 1, 'severity' => 'data_integrity', 'visibility' => 'internal', 'implemented' => true,
             'label' => 'Audit resubmitted repeatedly', 'blurb' => 'Three or more submission versions for one audit year.'],
-        'MISSING_AUDIT_THRESHOLD' => ['tier' => 1, 'severity' => 'rule_violation', 'visibility' => 'internal', 'implemented' => false,
-            'label' => 'Likely-required audit not filed', 'blurb' => 'Federal activity suggests the single-audit threshold was crossed, yet no accepted FAC submission exists (needs the Evaluation delinquency port).'],
+        'MISSING_AUDIT_THRESHOLD' => ['tier' => 1, 'severity' => 'rule_violation', 'visibility' => 'internal', 'implemented' => true,
+            'label' => 'Likely-required audit not filed',
+            'blurb' => 'An expected Single Audit is past its 2 CFR 200.512 deadline and not on file, with federal award activity or reported expenditures confirming one was still required (Evaluation Level 1, lib/Rules.php). CAVEAT: an UNRECORDED UEI CHANGE looks identical — the old UEI stops filing while the successor files on. Measured 2026-07-15: ~12% of Level-1 entities have a sibling UEI (same EIN or name) that filed the very years called missing, so verify the recipient did not simply re-register before acting.'],
         // ---- Tier 2: network & convergence (gated on the affiliate allowlist)
         'SELF_DEALING'            => ['tier' => 2, 'severity' => 'network', 'visibility' => 'internal', 'implemented' => true,
             'label' => 'Money flow between co-controlled entities',
@@ -141,8 +149,8 @@ final class Signals
             'label' => 'Round-number density', 'blurb' => 'Unusually high share of amounts ending in 000.'],
         'THRESHOLD_HUG'           => ['tier' => 3, 'severity' => 'statistical', 'visibility' => 'internal', 'implemented' => false,
             'label' => 'Expenditures hug the audit threshold', 'blurb' => 'Total federal $ sits just below the single-audit line (needs the non-audited USAspending universe).'],
-        'BURST_VANISH'            => ['tier' => 3, 'severity' => 'statistical', 'visibility' => 'internal', 'implemented' => false,
-            'label' => 'Burst then vanish', 'blurb' => 'Large funded year then no audit despite the threshold (needs the delinquency port).'],
+        'BURST_VANISH'            => ['tier' => 3, 'severity' => 'statistical', 'visibility' => 'internal', 'implemented' => true,
+            'label' => 'Burst then vanish', 'blurb' => 'A large final audited year followed by silence — every expected audit since is confirmed missing, leaving that federal exposure unaudited.'],
         'SOURCE_DIVERGENCE'       => ['tier' => 3, 'severity' => 'statistical', 'visibility' => 'internal', 'implemented' => false,
             'label' => 'FAC ↔ USAspending divergence', 'blurb' => 'Expended (FAC) and obligated (USAspending) disagree sharply.'],
         'GEO_MISMATCH'            => ['tier' => 3, 'severity' => 'statistical', 'visibility' => 'internal', 'implemented' => false,
@@ -177,6 +185,8 @@ final class Signals
             'EXCLUDED_SUBRECIPIENT'   => self::excludedSubrecipient($pdo),
             'SAM_LAPSED_FUNDED'       => self::samLapsedFunded($pdo),
             'LATE_AUDIT_CHRONIC'      => self::lateAuditChronic($pdo),
+            'MISSING_AUDIT_THRESHOLD' => self::missingAuditThreshold($pdo),
+            'BURST_VANISH'            => self::burstVanish($pdo),
             'CERT_NO_REVIEW_WINDOW'   => self::certNoReviewWindow($pdo),
             'RESUB_CHURN'             => self::resubChurn($pdo),
             'SELF_DEALING'            => self::selfDealing($pdo),
@@ -398,19 +408,154 @@ final class Signals
 
     private static function lateAuditChronic(PDO $pdo): array
     {
-        // 2 CFR 200.512: accepted later than fiscal-year end + 9 months, in >= LATE_MIN_YEARS years
-        $sql = "SELECT auditee_uei uei, COUNT(*) late_years, MAX(audit_year) latest
-                FROM fac_general
-                WHERE is_active = 1 AND auditee_uei IS NOT NULL
-                  AND fy_end_date IS NOT NULL AND fac_accepted_date IS NOT NULL
-                  AND fac_accepted_date > DATE_ADD(fy_end_date, INTERVAL 9 MONTH)
-                GROUP BY auditee_uei HAVING late_years >= ?";
-        $st = $pdo->prepare($sql);
-        $st->execute([self::LATE_MIN_YEARS]);
-        $out = [];
+        // 2 CFR 200.512: accepted after the deadline, in >= LATE_MIN_YEARS years.
+        //
+        // The deadline comes from aero_deadline9() (lib/Rules.php), NOT from SQL. This used to
+        // test `fac_accepted_date > DATE_ADD(fy_end_date, INTERVAL 9 MONTH)`, which keeps the
+        // day-of-month and so lands a day EARLY whenever the FY-end is a short month's last day:
+        // a Feb-28 FYE is due Nov-30, but DATE_ADD said Nov-28. That mis-flagged 3,363 reports as
+        // late and falsely accused 471 entities of chronic lateness (measured 2026-07-15). The
+        // month-end semantics live in one tested place; don't re-derive them in SQL.
+        $st = $pdo->query("SELECT auditee_uei uei, audit_year, fy_end_date fye, fac_accepted_date acc
+                           FROM fac_general
+                           WHERE is_active = 1 AND auditee_uei IS NOT NULL
+                             AND fy_end_date IS NOT NULL AND fac_accepted_date IS NOT NULL");
+        $late = [];                                   // uei => [count, latestYear]
         foreach ($st as $r) {
-            $out[] = ['uei' => $r['uei'], 'scope' => '', 'magnitude' => (float) $r['late_years'],
-                'evidence' => ['late_submissions' => (int) $r['late_years'], 'latest_year' => (int) $r['latest']]];
+            if (strtotime((string) $r['acc']) <= aero_deadline9((string) $r['fye'])) continue;
+            $u = $r['uei'];
+            $y = (int) $r['audit_year'];
+            if (!isset($late[$u])) $late[$u] = [0, $y];
+            $late[$u][0]++;
+            if ($y > $late[$u][1]) $late[$u][1] = $y;
+        }
+        $out = [];
+        foreach ($late as $u => [$n, $latest]) {
+            if ($n < self::LATE_MIN_YEARS) continue;
+            $out[] = ['uei' => $u, 'scope' => '', 'magnitude' => (float) $n,
+                'evidence' => ['late_submissions' => $n, 'latest_year' => $latest]];
+        }
+        return $out;
+    }
+
+    /**
+     * Level-1 delinquency for every known entity, from the SAME walk the Evaluation, the profile,
+     * the map precompute and Search use (lib/Rules.php aero_filing_status). One pass, memoised, so
+     * MISSING_AUDIT_THRESHOLD and BURST_VANISH share it — and so neither can assert a delinquency
+     * the rest of AERO declines to (a missing year counts only when award activity or the >= $2M
+     * expenditure proxy confirms an audit was still required; otherwise it is 'unverified', which
+     * is a lead, not a flag).
+     *
+     * UEI successions are collapsed via aero_uei_groups(): a retired member is skipped entirely and
+     * its filings merged into the canonical member. Without that, a government that changed UEI gets
+     * its OLD identity flagged "audit not filed" for the years it has been filing under the new one.
+     *
+     * @return array uei => ['missing' => [year => confirmed_by], 'last_filed' => ?int, 'federal' => float]
+     */
+    private static function delinquency(PDO $pdo): array
+    {
+        static $cache = null;
+        if ($cache !== null) return $cache;
+
+        $grp = aero_uei_groups($pdo);
+        $members = $grp['canon'];        // canonical => [member ueis]
+        $retired = $grp['retired'];      // retired => canonical
+
+        $fed = [];
+        foreach ($pdo->query("SELECT uei, COALESCE(federal_latest, 0) f FROM entity
+                              WHERE latest_audit_year IS NOT NULL") as $r) {
+            $fed[$r['uei']] = (float) $r['f'];
+        }
+        $subjects = array_values(array_diff(array_keys($fed), array_keys($retired)));   // never judge a retired UEI
+        $cache = [];
+        foreach (array_chunk($subjects, 5000) as $chunk) {
+            // look up the chunk PLUS any retired siblings, so a succession is judged on its whole history
+            $lookup = [];
+            foreach ($chunk as $u) {
+                $lookup[$u] = true;
+                foreach ($members[$u] ?? [] as $m) $lookup[$m] = true;
+            }
+            $lk = array_keys($lookup);
+            $in = implode(',', array_fill(0, count($lk), '?'));
+            $st = $pdo->prepare("SELECT auditee_uei uei, audit_year yr, MAX(fy_end_date) fy,
+                                        MAX(audit_period_covered = 'biennial') bi
+                                 FROM fac_general WHERE auditee_uei IN ($in) AND fy_end_date IS NOT NULL
+                                 GROUP BY auditee_uei, audit_year");
+            $st->execute($lk);
+            $byUei = [];
+            foreach ($st as $r) $byUei[$r['uei']][(int) $r['yr']] = ['fy' => $r['fy'], 'orig' => null, 'bi' => (int) $r['bi'] === 1];
+
+            $iv = [];
+            $st = $pdo->prepare("SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
+                                 WHERE recipient_uei IN ($in) AND category IN ('grant','direct_payment')
+                                   AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
+            $st->execute($lk);
+            foreach ($st as $r) $iv[$r['uei']][] = [$r['s'], $r['e']];
+            $sy = [];
+            try {
+                $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($in)
+                                     GROUP BY sub_vendor_uei, year");
+                $st->execute($lk);
+                foreach ($st as $r) $sy[$r['uei']][(int) $r['year']] = true;
+            } catch (\Throwable $e) { /* no edge table -> proxy + direct awards still apply */ }
+
+            foreach ($chunk as $uei) {
+                $f = []; $ivM = []; $syM = [];
+                foreach ($members[$uei] ?? [$uei] as $m) {
+                    foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }
+                    foreach ($iv[$m] ?? [] as $pp) $ivM[] = $pp;
+                    foreach ($sy[$m] ?? [] as $yy => $_u) $syM[$yy] = true;
+                }
+                if (!$f) continue;
+                $miss = [];
+                foreach (aero_filing_status($f, aero_activity_confirmer($ivM, $syM), $fed[$uei] ?? 0.0) as $y => $s) {
+                    if ($s['st'] === 'missing') $miss[$y] = $s['confirmed_by'];
+                }
+                if (!$miss) continue;
+                $cache[$uei] = ['missing' => $miss, 'last_filed' => max(array_keys($f)), 'federal' => $fed[$uei] ?? 0.0];
+            }
+        }
+        return $cache;
+    }
+
+    private static function missingAuditThreshold(PDO $pdo): array
+    {
+        $out = [];
+        foreach (self::delinquency($pdo) as $uei => $d) {
+            $years = array_keys($d['missing']);
+            sort($years);
+            $out[] = ['uei' => $uei, 'scope' => '', 'magnitude' => (float) count($years),
+                'evidence' => [
+                    'missing_years'   => $years,
+                    'confirmed_by'    => array_values(array_unique(array_values($d['missing']))),
+                    'last_filed_year' => $d['last_filed'],
+                    'federal_latest'  => round($d['federal'], 2),
+                ]];
+        }
+        return $out;
+    }
+
+    private static function burstVanish(PDO $pdo): array
+    {
+        // Large last funded year, then gone: every expected audit since the final filing is
+        // confirmed-missing. A strict subset of MISSING_AUDIT_THRESHOLD, qualified by money and
+        // persistence — the point is the exposure left unaudited, not the filing gap itself.
+        $out = [];
+        foreach (self::delinquency($pdo) as $uei => $d) {
+            if ($d['federal'] < self::BURST_MIN_FEDERAL) continue;
+            $years = array_keys($d['missing']);
+            if (count($years) < self::BURST_MIN_MISSING) continue;
+            sort($years);
+            // "vanished" = the missing run starts right after the last filing and never resumes
+            if ($d['last_filed'] === null || $years[0] !== $d['last_filed'] + 1) continue;
+            $out[] = ['uei' => $uei, 'scope' => '', 'magnitude' => round($d['federal'], 2),
+                'evidence' => [
+                    'last_filed_year'      => $d['last_filed'],
+                    'federal_that_year'    => round($d['federal'], 2),
+                    'missing_since'        => $years[0],
+                    'consecutive_missing'  => count($years),
+                    'confirmed_by'         => array_values(array_unique(array_values($d['missing']))),
+                ]];
         }
         return $out;
     }

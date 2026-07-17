@@ -458,8 +458,19 @@ final class Signals
         if ($cache !== null) return $cache;
 
         $grp = aero_uei_groups($pdo);
-        $members = $grp['canon'];        // canonical => [member ueis]
+        $members = $grp['canon'];        // canonical => [member ueis]  (FILINGS)
         $retired = $grp['retired'];      // retired => canonical
+
+        // Component MONEY family (fac_additional_ueis UNION entity_related_uei): a parent's money
+        // lands under its component agencies' own UEIs even though it files one consolidated audit.
+        // The activity check rolls these up; FILINGS stay on the succession set. Matches
+        // /api/evaluation and the map — without it a component-heavy entity looks inactive and only
+        // the $2M proxy catches it (State of Nevada = $0 solo, $6.9B across its departments).
+        $compOf = [];
+        foreach ($pdo->query("SELECT auditee_uei uei, additional_uei m FROM fac_additional_ueis WHERE additional_uei > ''
+                              UNION SELECT uei, related_uei m FROM entity_related_uei WHERE related_uei > ''") as $r) {
+            $compOf[$r['uei']][] = $r['m'];
+        }
 
         $fed = [];
         foreach ($pdo->query("SELECT uei, COALESCE(federal_latest, 0) f FROM entity
@@ -469,11 +480,14 @@ final class Signals
         $subjects = array_values(array_diff(array_keys($fed), array_keys($retired)));   // never judge a retired UEI
         $cache = [];
         foreach (array_chunk($subjects, 5000) as $chunk) {
-            // look up the chunk PLUS any retired siblings, so a succession is judged on its whole history
+            // look up the chunk PLUS retired siblings (for the succession history) AND component
+            // agencies (for the money), so both families are fetched in one pass.
             $lookup = [];
             foreach ($chunk as $u) {
-                $lookup[$u] = true;
-                foreach ($members[$u] ?? [] as $m) $lookup[$m] = true;
+                foreach ($members[$u] ?? [$u] as $m) {
+                    $lookup[$m] = true;
+                    foreach ($compOf[$m] ?? [] as $c) $lookup[$c] = true;
+                }
             }
             $lk = array_keys($lookup);
             $in = implode(',', array_fill(0, count($lk), '?'));
@@ -502,9 +516,11 @@ final class Signals
             foreach ($chunk as $uei) {
                 $f = []; $ivM = []; $syM = [];
                 foreach ($members[$uei] ?? [$uei] as $m) {
-                    foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }
-                    foreach ($iv[$m] ?? [] as $pp) $ivM[] = $pp;
-                    foreach ($sy[$m] ?? [] as $yy => $_u) $syM[$yy] = true;
+                    foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }   // FILINGS: succession
+                    foreach ([$m, ...($compOf[$m] ?? [])] as $mm) {                                  // MONEY: + components
+                        foreach ($iv[$mm] ?? [] as $pp) $ivM[] = $pp;
+                        foreach ($sy[$mm] ?? [] as $yy => $_u) $syM[$yy] = true;
+                    }
                 }
                 if (!$f) continue;
                 $miss = [];

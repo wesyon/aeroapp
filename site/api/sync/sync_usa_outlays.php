@@ -63,7 +63,20 @@ function usa_post(string $path, array $body): array
  */
 function outlay_months(string $awardId, int $maxPages): array
 {
-    $cum = [];   // [fy][fiscal_period] => summed gross_outlay_amount (across all accounts/OC/PA/DEFC)
+    // [fy][reporting line][fiscal_period] => that LINE's cumulative gross_outlay_amount.
+    //
+    // Keyed per reporting line, NOT summed flat. Each File C row is cumulative-within-FY for its own
+    // (federal_account, object_class, program_activity, DEFC) combination, so the cumulative series
+    // must be differenced PER LINE and the deltas summed — not the other way round. Summing first
+    // collapses the account dimension and only survives if every line reports in every period: when a
+    // line appears late its entire prior cumulative lands in one month, and when a line stops
+    // reporting the flat sum DROPS and invents a negative month that never happened.
+    //
+    // Measured against live File C (2026-07-15), the two methods disagreed on 8 of 12 exposed awards
+    // (>=12 outlay months, >$50M, >=1 negative month) — ASST_NON_MA-2018-004_069 came out $614.0M the
+    // old way vs $203.5M per-line, a 3x overstatement. Awards with many lines (76, 86) drifted;
+    // awards with few (8, 9) agreed, which is exactly the predicted signature.
+    $cum = [];
     $page = 1;
     do {
         $res = usa_post('/api/v2/awards/funding/', [
@@ -77,7 +90,11 @@ function outlay_months(string $awardId, int $maxPages): array
             $fy = (int) ($r['reporting_fiscal_year'] ?? 0);
             $fm = (int) ($r['reporting_fiscal_month'] ?? 0);        // 1=Oct … 12=Sep (federal fiscal period)
             if ($fy <= 0 || $fm < 1 || $fm > 12) continue;
-            $cum[$fy][$fm] = ($cum[$fy][$fm] ?? 0) + (float) $go;
+            // The endpoint returns the full account dimension; identify the reporting line with it.
+            $line = ($r['federal_account'] ?? '?') . '|' . ($r['object_class'] ?? '')
+                  . '|' . ($r['program_activity_code'] ?? '') . '|' . ($r['disaster_emergency_fund_code'] ?? '');
+            // += guards the case where two rows share a line+period (indistinguishable => same series)
+            $cum[$fy][$line][$fm] = ($cum[$fy][$line][$fm] ?? 0) + (float) $go;
         }
         $more = (bool) ($res['page_metadata']['hasNext'] ?? false);
         if ($more && $maxPages > 0 && $page >= $maxPages) $more = false;
@@ -85,19 +102,21 @@ function outlay_months(string $awardId, int $maxPages): array
     } while ($more);
 
     $out = [];
-    foreach ($cum as $fy => $byPeriod) {
-        ksort($byPeriod);          // ascending reporting period within the FY (cumulative series)
+    foreach ($cum as $fy => $byLine) {
+      foreach ($byLine as $byPeriod) {
+        ksort($byPeriod);          // ascending reporting period within the FY (this line's cumulative series)
         $prev = 0.0;
         foreach ($byPeriod as $fm => $cumVal) {
-            $delta = round($cumVal - $prev, 2);   // period-over-period = the calendar month's outlay
+            $delta = round($cumVal - $prev, 2);   // period-over-period = this line's calendar-month outlay
             $prev  = $cumVal;
             // Federal reporting period -> calendar month/year. fm 1=Oct(prev cal yr) … 12=Sep.
             $calMonth = (($fm + 8) % 12) + 1;
             $calYear  = ($fm <= 3) ? $fy - 1 : $fy;
             $ym = sprintf('%04d-%02d-01', $calYear, $calMonth);
             if ($delta == 0.0) continue;          // keep negatives; drop exact zeros to bound rows
-            $out[$ym] = round(($out[$ym] ?? 0) + $delta, 2);
+            $out[$ym] = round(($out[$ym] ?? 0) + $delta, 2);   // sum the per-line deltas into the month
         }
+      }
     }
     return $out;
 }

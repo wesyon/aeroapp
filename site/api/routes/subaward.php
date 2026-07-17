@@ -204,9 +204,12 @@ $attachPrograms($sent['rows']);
 $attachPrograms($received['rows']);
 
 // "Covered" status: a counterparty with no Single Audit under its OWN UEI may still be
-// audited as a COMPONENT UNIT — listed as an additional UEI on a parent entity's active
-// audit (e.g. a state board of education covered by the statewide single audit). One
-// batched lookup over fac_additional_ueis; clears the >=$1M-no-audit flag for these.
+// audited as a COMPONENT UNIT — either listed as an additional UEI on a parent entity's
+// active audit (fac_additional_ueis, auditor-declared on the SF-SAC) OR linked as a curated
+// component (entity_related_uei, e.g. NY's Division of Homeland Security & Emergency
+// Services inside New York State's statewide audit). BOTH sources, same union the money
+// rollups use — checking only the first left curated state agencies rendering "None on
+// file" while their statewide audit sat on file. Clears the >=$1M-no-audit flag for these.
 $cpUeis = [];
 foreach ([$sent['rows'], $received['rows']] as $rs) {
     foreach ($rs as $r) $cpUeis[$r['uei']] = true;
@@ -215,12 +218,17 @@ $coveredBy = [];
 if ($cpUeis) {
     $in = implode(',', array_fill(0, count($cpUeis), '?'));
     $st = $pdo->prepare(
-        "SELECT au.additional_uei uei, g.auditee_name nm, g.audit_year yr
-         FROM fac_additional_ueis au JOIN fac_general g ON g.report_id = au.report_id
-         WHERE au.additional_uei IN ($in) AND g.is_active = 1
-         ORDER BY g.audit_year DESC"
+        "SELECT uei, nm, yr FROM (
+            SELECT au.additional_uei uei, g.auditee_name nm, g.audit_year yr
+            FROM fac_additional_ueis au JOIN fac_general g ON g.report_id = au.report_id
+            WHERE au.additional_uei IN ($in) AND g.is_active = 1
+            UNION ALL
+            SELECT er.related_uei uei, g.auditee_name nm, g.audit_year yr
+            FROM entity_related_uei er JOIN fac_general g ON g.auditee_uei = er.uei
+            WHERE er.related_uei IN ($in) AND g.is_active = 1
+         ) c ORDER BY yr DESC"
     );
-    $st->execute(array_keys($cpUeis));
+    $st->execute([...array_keys($cpUeis), ...array_keys($cpUeis)]);
     foreach ($st as $r) {
         if (!isset($coveredBy[$r['uei']])) {            // first = most recent (DESC)
             $coveredBy[$r['uei']] = ['name' => $r['nm'], 'year' => (int) $r['yr']];

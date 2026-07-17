@@ -120,6 +120,14 @@ CREATE TABLE fac_general (
   audit_type                                   VARCHAR(50) NULL,
   type_audit_code                              VARCHAR(20) NULL,
   gaap_results                                 VARCHAR(100) NULL,
+  -- worst-first opinion category, derived + indexed for the Modified Opinions dashboard
+  -- (mirrors migrations/2026-07-16_fac_general_gaap_cat.sql; 'qualified' sits inside the
+  -- legacy word 'unqualified', hence the guard)
+  gaap_cat VARCHAR(12) GENERATED ALWAYS AS (CASE
+      WHEN gaap_results LIKE '%adverse%' THEN 'adverse'
+      WHEN gaap_results LIKE '%disclaimer%' THEN 'disclaimer'
+      WHEN gaap_results LIKE '%qualified%' AND gaap_results NOT LIKE '%unqualified%' THEN 'qualified'
+      ELSE 'unmodified' END) STORED,
   data_source                                  VARCHAR(20) NULL,
   -- Auditor
   auditor_firm_name                            VARCHAR(255) NULL,
@@ -174,6 +182,7 @@ CREATE TABLE fac_general (
   KEY idx_general_uei (auditee_uei),
   KEY idx_general_year (audit_year),
   KEY idx_general_state (auditee_state),
+  KEY idx_fg_gaap_cat (gaap_cat, is_active, audit_year),
   CONSTRAINT fk_general_entity FOREIGN KEY (auditee_uei)
       REFERENCES entity (uei) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -208,6 +217,10 @@ CREATE TABLE fac_federal_awards (
   PRIMARY KEY (report_id, award_reference),
   KEY idx_awards_agency (federal_agency_prefix),
   KEY idx_awards_aln (aln),
+  -- per-major-program compliance opinion (U/Q/A/D) for the Modified Opinions dashboard;
+  -- audit_report_type leads (Q/A/D ~33k of ~2.5M rows). Mirrors
+  -- migrations/2026-07-16_fac_federal_awards_opinion_index.sql.
+  KEY idx_fa_opinion (audit_report_type, is_major, aln, report_id, amount_expended),
   -- (uei, prefix) lets the recipients-by-agency EXISTS run as an indexed semi-join
   -- instead of materializing ~1.3M award rows (recipient search ~14s -> <1s). Its
   -- auditee_uei prefix also serves every plain auditee_uei= lookup, so no standalone
@@ -318,6 +331,9 @@ CREATE TABLE fac_finding_extract (
   KEY idx_fext_year (audit_year),
   KEY idx_fext_qc (qc_amount),
   KEY idx_fext_ver (parser_version),
+  -- covering join for the Findings dashboard (read qc_amount without touching the MEDIUMTEXT
+  -- row) — see migrations/2026-07-16_fac_finding_extract_join_index.sql
+  KEY idx_fext_join_qc (report_id, finding_ref_number, qc_amount),
   CONSTRAINT fk_fext_text FOREIGN KEY (report_id, finding_ref_number)
       REFERENCES fac_findings_text (report_id, finding_ref_number)
       ON UPDATE CASCADE ON DELETE CASCADE
@@ -937,7 +953,10 @@ INSERT INTO schema_migrations (filename, applied_at) VALUES
   ('2026-07-10_txn_month_drop_fk.sql', UTC_TIMESTAMP()),
   ('2026-07-10_fac_additional_ueis_indexes.sql', UTC_TIMESTAMP()),
   ('2026-07-10_sam_exclusion_drop_dead_key.sql', UTC_TIMESTAMP()),
-  ('2026-07-10_drop_dead_indexes.sql', UTC_TIMESTAMP());
+  ('2026-07-10_drop_dead_indexes.sql', UTC_TIMESTAMP()),
+  ('2026-07-16_fac_general_gaap_cat.sql', UTC_TIMESTAMP()),
+  ('2026-07-16_fac_federal_awards_opinion_index.sql', UTC_TIMESTAMP()),
+  ('2026-07-16_fac_finding_extract_join_index.sql', UTC_TIMESTAMP());
 
 CREATE TABLE sync_log (
   id            BIGINT      NOT NULL AUTO_INCREMENT,

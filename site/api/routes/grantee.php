@@ -457,12 +457,19 @@ if ($filings) {
     // whether a missing year counts — the expenditure PROXY and USAspending/FSRS award
     // ACTIVITY. Both live in lib/Rules.php (aero_filing_status / aero_activity_confirmer),
     // shared with /api/evaluation and the map precompute so the surfaces can't drift.
+    //
+    // MONEY scope = the auditee's UEI(s) PLUS its component agencies ($additionalUeis, built above
+    // from fac_additional_ueis + entity_related_uei). A parent files one consolidated audit but its
+    // components receive money under their own UEIs, so the activity check must roll them up — the
+    // FILINGS above stay on $ueiSet. Without this the State of Nevada shows $0 of activity.
+    $moneySet = array_values(array_unique(array_merge($ueiSet, array_column($additionalUeis, 'uei'))));
+    $mIN = implode(',', array_fill(0, count($moneySet), '?'));
     $directIntervals = [];                                                        // ['Y-m-d' start, end] of direct awards
     $apStmt = $pdo->prepare(
         "SELECT period_start_date s, period_end_date e FROM usa_award
-         WHERE recipient_uei IN ($IN) AND category IN ('grant','direct_payment')
+         WHERE recipient_uei IN ($mIN) AND category IN ('grant','direct_payment')
            AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
-    $apStmt->execute($ueiSet);
+    $apStmt->execute($moneySet);
     foreach ($apStmt as $r) $directIntervals[] = [$r['s'], $r['e']];
     // FSRS pass-through subaward YEARS the entity received (as sub). Read from the
     // subaward_edge aggregate, NOT the multi-GB sam_assistance_subaward detail — the
@@ -470,8 +477,8 @@ if ($filings) {
     // edge. Year granularity is sufficient for the FY-window activity check.
     $subYears = [];
     $psStmt = $pdo->prepare(
-        "SELECT DISTINCT year FROM subaward_edge WHERE sub_vendor_uei IN ($IN)");
-    $psStmt->execute($ueiSet);
+        "SELECT DISTINCT year FROM subaward_edge WHERE sub_vendor_uei IN ($mIN)");
+    $psStmt->execute($moneySet);
     foreach ($psStmt as $r) { $subYears[(int) $r['year']] = true; }
 
     $nowY = (int) date('Y');

@@ -99,6 +99,18 @@ $pdo->exec("
 $grp = aero_uei_groups($pdo);
 $groupOf = $grp['canon'];               // canonical uei => [member ueis] (multi-UEI groups only)
 $retired = array_keys($grp['retired']); // non-canonical member ueis — must not carry their own dot
+
+// Component MONEY family (fac_additional_ueis UNION entity_related_uei): a parent auditee's money
+// lands under its component agencies' own UEIs even though it files one consolidated audit. The L1
+// MONEY check rolls these up; FILINGS stay on the succession set. Without it, a component-heavy
+// entity looks inactive and only the $2M proxy catches it (State of Nevada = $0 solo, $6.9B family).
+$compOf = [];   // auditee uei => [component UEIs]
+foreach ($pdo->query(
+    "SELECT auditee_uei uei, additional_uei m FROM fac_additional_ueis WHERE additional_uei > ''
+     UNION SELECT uei, related_uei m FROM entity_related_uei WHERE related_uei > ''") as $r) {
+    $compOf[$r['uei']][] = $r['m'];
+}
+
 if ($retired) {
     $st = $pdo->prepare("DELETE FROM entity_map_point WHERE uei IN (" . implode(',', array_fill(0, count($retired), '?')) . ")");
     $st->execute($retired);
@@ -122,8 +134,10 @@ foreach (array_chunk($cand, 5000) as $chunk) {
     // a government's L1 must be judged on its WHOLE history, not just its current UEI's slice.
     $lookup = [];
     foreach ($chunk as $u) {
-        $lookup[$u] = true;
-        foreach ($groupOf[$u] ?? [] as $m) $lookup[$m] = true;
+        foreach ($groupOf[$u] ?? [$u] as $m) {
+            $lookup[$m] = true;
+            foreach ($compOf[$m] ?? [] as $c) $lookup[$c] = true;   // component UEIs, for the money queries
+        }
     }
     $lk = array_keys($lookup);
     $in = implode(',', array_fill(0, count($lk), '?'));
@@ -164,9 +178,11 @@ foreach (array_chunk($cand, 5000) as $chunk) {
         $members = $groupOf[$uei] ?? [$uei];         // single-UEI entities: the group IS the entity
         $f = []; $ivM = []; $syM = [];
         foreach ($members as $m) {
-            foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }
-            foreach ($iv[$m] ?? [] as $p) $ivM[] = $p;
-            foreach ($sy[$m] ?? [] as $yy => $_u) $syM[$yy] = true;
+            foreach ($byUei[$m] ?? [] as $yy => $x) { if (!isset($f[$yy])) $f[$yy] = $x; }   // FILINGS: succession only
+            foreach ([$m, ...($compOf[$m] ?? [])] as $mm) {                                   // MONEY: + components
+                foreach ($iv[$mm] ?? [] as $p) $ivM[] = $p;
+                foreach ($sy[$mm] ?? [] as $yy => $_u) $syM[$yy] = true;
+            }
         }
         if (!$f) continue;
         $status = aero_filing_status($f, aero_activity_confirmer($ivM, $syM), $fed[$uei] ?? 0.0);

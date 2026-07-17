@@ -103,6 +103,27 @@ $all = $groups ? array_merge(...array_column($groups, 'ueis')) : [];
 if (!$all) json_out(['states' => [], 'type' => $type, 'total' => 0, 'capped' => false, 'generated_at' => date('c')]);
 $in = implode(',', array_fill(0, count($all), '?'));
 
+// Component MONEY family: a government/parent files ONE consolidated Single Audit, but its component
+// agencies receive federal money under their OWN UEIs (State of Nevada = $0 on its audit UEI, $6.9B
+// across its departments). The delinquency MONEY check must roll those up, or an entity whose money
+// lives under components looks inactive and only the $2M proxy saves it — and below $2M it is missed
+// entirely (54 such entities measured 2026-07-16). FILINGS stay on the succession set ($all); this
+// widens only the money lookups. Same rollup the USAspending tab / profile use (fac_additional_ueis
+// UNION entity_related_uei, money-only by design).
+$compOf = [];                                   // group uei => [component UEIs]
+$moneyUeis = array_fill_keys($all, true);       // succession set + components, for the money queries
+if ($all) {
+    $st = $pdo->prepare(
+        "SELECT auditee_uei uei, additional_uei m FROM fac_additional_ueis
+         WHERE auditee_uei IN ($in) AND additional_uei IS NOT NULL AND additional_uei <> ''
+         UNION SELECT uei, related_uei m FROM entity_related_uei
+         WHERE uei IN ($in) AND related_uei IS NOT NULL AND related_uei <> ''");
+    $st->execute([...$all, ...$all]);
+    foreach ($st as $r) { $compOf[$r['uei']][] = $r['m']; $moneyUeis[$r['m']] = true; }
+}
+$moneyAll = array_keys($moneyUeis);
+$moneyIn = implode(',', array_fill(0, count($moneyAll), '?'));
+
 // (A) filings per uei/year — delinquency source (original submission per audit year).
 // The 2 CFR 200.512 deadline is applied inside aero_filing_status() (lib/Rules.php,
 // unit-tested), not transcribed here.
@@ -133,17 +154,17 @@ foreach ($st as $r) {
 // batched here across the cohort instead of per entity. subaward_edge is a deploy-shipped
 // aggregate that may not exist yet -> degrade to no-subaward-signal (proxy/direct still apply).
 // Dirty dates are clamped inside aero_activity_confirmer(), so rows are collected raw here.
-$directIntervals = [];   // uei => [['Y-m-d' start, 'Y-m-d' end], ...]
+$directIntervals = [];   // uei => [['Y-m-d' start, 'Y-m-d' end], ...]  (keyed on award recipient, incl. components)
 $subYears = [];          // uei => [year => true]
 $st = $pdo->prepare(
     "SELECT recipient_uei uei, period_start_date s, period_end_date e FROM usa_award
-     WHERE recipient_uei IN ($in) AND category IN ('grant','direct_payment')
+     WHERE recipient_uei IN ($moneyIn) AND category IN ('grant','direct_payment')
        AND period_start_date IS NOT NULL AND period_end_date IS NOT NULL");
-$st->execute($all);
+$st->execute($moneyAll);
 foreach ($st as $r) $directIntervals[$r['uei']][] = [$r['s'], $r['e']];
 try {
-    $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($in) GROUP BY sub_vendor_uei, year");
-    $st->execute($all);
+    $st = $pdo->prepare("SELECT sub_vendor_uei uei, year FROM subaward_edge WHERE sub_vendor_uei IN ($moneyIn) GROUP BY sub_vendor_uei, year");
+    $st->execute($moneyAll);
     foreach ($st as $r) $subYears[$r['uei']][(int) $r['year']] = true;
 } catch (\Throwable $e) { /* no edge table -> subaward confirmation unavailable; proxy + direct awards still apply */ }
 
@@ -213,12 +234,14 @@ foreach ($groups as $g) {
             $flYear = $yr; $federalLatest = (float) ($repExp[$rid] ?? 0);
         }
     }
-    // Per-group award-activity confirmation over the merged UEI set (lib/Rules.php — the same
-    // confirmer grantee.php and the map precompute build).
+    // Per-group award-activity confirmation over the merged UEI set PLUS each member's component
+    // agencies (lib/Rules.php — the same confirmer grantee.php and the map precompute build).
     $grpIntervals = []; $grpSubYears = [];
     foreach ($g['ueis'] as $u) {
-        foreach ($directIntervals[$u] ?? [] as $iv) $grpIntervals[] = $iv;
-        foreach ($subYears[$u] ?? [] as $yy => $_unused) $grpSubYears[$yy] = true;
+        foreach ([$u, ...($compOf[$u] ?? [])] as $mu) {         // the auditee UEI and its components
+            foreach ($directIntervals[$mu] ?? [] as $iv) $grpIntervals[] = $iv;
+            foreach ($subYears[$mu] ?? [] as $yy => $_unused) $grpSubYears[$yy] = true;
+        }
     }
     $confirmActivity = aero_activity_confirmer($grpIntervals, $grpSubYears);
 

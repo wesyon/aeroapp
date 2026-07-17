@@ -1,5 +1,178 @@
 [
     {
+        "date":  "2026-07-16 20:23",
+        "commit":  "634484c",
+        "changes":  [
+                        "Nav: FAC vs SAM below Passthrough"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 20:20",
+        "commit":  "198651d",
+        "changes":  [
+                        "Repeat Findings dashboard rebuilt from scratch — precomputed, uncapped, public"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 20:03",
+        "commit":  "d221805",
+        "changes":  [
+                        "Findings dashboard — all findings on active audits, severity-first"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 19:51",
+        "commit":  "8a5e066",
+        "changes":  [
+                        "Opinions dashboard: program-compliance level behind a toggle"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 19:21",
+        "commit":  "dcdc2e3",
+        "changes":  [
+                        "Modified Opinions dashboard — live off fac_general, indexed via a generated column"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 18:54",
+        "commit":  "428d0ee",
+        "changes":  [
+                        "Delinquency preview: bare year in the FY column (header already says FY)",
+                        "Delinquency preview: label the pagination total — entity-years, not entities"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 18:52",
+        "commit":  "2772014",
+        "changes":  [
+                        "Delinquency preview: Class column only in the all-classes view"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 18:41",
+        "commit":  "7ad6456",
+        "changes":  [
+                        "Profile: dynamic Back button — returns to the referring surface"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 18:35",
+        "commit":  "3903445",
+        "changes":  [
+                        "Profile breadcrumb follows the referring surface (Delinquency dashboard stamps it)"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 18:28",
+        "commit":  "e628314",
+        "changes":  [
+                        "Delinquency preview: lead links land on the profile\u0027s Audits tab"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:59",
+        "commit":  "61d0ac4",
+        "changes":  [
+                        "Audits tab: Outlays column between Obligated and Expended"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:52",
+        "commit":  "91b9d0c",
+        "changes":  [
+                        "Delinquency preview: \u0027never crawled\u0027 -\u003e \u0027awards not yet synced\u0027"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:48",
+        "commit":  "57d005c",
+        "changes":  [
+                        "Delinquency preview: entity search (name or UEI), page-wide"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:43",
+        "commit":  "ed25803",
+        "changes":  [
+                        "Delinquency preview: remove the Outlays/Obligations columns — Basis already carries them"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:41",
+        "commit":  "44dcc6c",
+        "changes":  [
+                        "Delinquency preview: \u0027At risk\u0027 explainer block in the logic panel"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 17:24",
+        "commit":  "0a020b2",
+        "changes":  [
+                        "Delinquency preview: sortable Outlays + Obligations columns on the leads table",
+                        "references: NSAQP KMSAL survey + Part 4 draft responses"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 14:01",
+        "commit":  "25b2613",
+        "changes":  [
+                        "Delinquency preview: NULL-safe name/state sort (prod\u0027s entity table is HHS-pruned)"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 14:00",
+        "commit":  "4e13f4d",
+        "changes":  [
+                        "Delinquency preview: State Govt cohort, state filter, column sort, pagination, default-hidden logic"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 13:49",
+        "commit":  "44b9375",
+        "changes":  [
+                        "Nav: move Delinquency (preview) under Search Recipients",
+                        "Americanize \u0027organisation\u0027 -\u003e \u0027organization\u0027 in client-facing text",
+                        "docs: roadmap §7-E — shipped to prod 2026-07-16 (stack merged via #27, tables pushed)"
+                    ]
+    },
+    {
+        "date":  "2026-07-16 13:41",
+        "commit":  "db874b2",
+        "changes":  [
+                        "Merge pull request #27 from wesyon/feat/delinquency-covered-and-obligation-basis",
+                        "Delinquency preview: plain-language rewording of the money-attribution footnote",
+                        "Delinquency preview: ship to prod — remove the local-only route gate and DEV nav gate",
+                        "Delinquency preview: drop Trigger + Today columns; type filter uses the Evaluation labels",
+                        "Delinquency preview: logic panel remembers its collapsed state",
+                        "Delinquency preview: basis column shows only the unique evidence",
+                        "Delinquency preview: page-level FY/type filters + a round of tightening",
+                        "Delinquency preview UI: logic-only panel, 4-across KPIs, clean legend, FY/type lead filters",
+                        "Delinquency preview: park the How-it-works panel (hidden, not deleted)",
+                        "Delinquency preview: tighten the inline logic-block pills",
+                        "Delinquency preview: grade pills inline in the logic block",
+                        "Delinquency preview: render the logic block in the client\u0027s D1-D5 format",
+                        "Delinquency preview: show the exact decision logic in the How-it-works panel",
+                        "Profile Passthrough tab: \"Covered\" must read curated components too, not just SF-SAC declarations",
+                        "docs(delinquency): fix stale R-number comments in the classify cascade",
+                        "Delinquency preview: split obligation confirmation into two grades — Committed vs Allocated",
+                        "docs+ui: Committed exposure is an allocated estimate — mark it approximate",
+                        "docs: measure when a Committed flag is strong (PoP within FY) — it\u0027s rare (3.3%)",
+                        "Delinquency preview: split obligation-confirmed into its own grade, COMMITTED",
+                        "Delinquency preview: add COVERED grade + obligation-basis confirmation for Observed",
+                        "docs: add §7 Roadmap to go-live — the single go-back-to checklist",
+                        "Delinquency: roll component-agency money up to the parent, on every live surface",
+                        "Delinquency preview: roll component-agency money up to the parent auditee",
+                        "Delinquency methodology preview — a DEV page that runs the proposed rule beside the live one",
+                        "docs: add the logic in full as reviewer-readable pseudocode (§6)",
+                        "docs: fix the trigger rule (FY START, not FY label) + record four more blind spots",
+                        "docs: the delinquency methodology — what the rule does, why it\u0027s wrong, what replaces it",
+                        "Merge pull request #23 from wesyon/fix/money-evidence-layer0",
+                        "Layer 0: quarantine unusable money evidence; fix the File C outlay reconstruction",
+                        "Parking lot: unrecorded UEI successions inflate Level 1 by ~12%"
+                    ]
+    },
+    {
         "date":  "2026-07-15 20:28",
         "commit":  "f58ea92",
         "changes":  [

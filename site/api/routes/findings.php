@@ -55,7 +55,6 @@ $hhs = q_str('hhs') === '1';
 
 $conds = ['g.is_active = 1'];
 $params = [];
-if ($fy !== null) { $conds[] = 'g.audit_year = ?'; $params[] = $fy; }
 if ($etype !== null) { aero_etype_cond($etype, $REGISTRY, 'f.auditee_uei', 'e.entity_type', $conds, $params); }
 if (preg_match('/^[A-Z]{2}$/', $stateF)) { $conds[] = 'COALESCE(e.state, g.auditee_state) = ?'; $params[] = $stateF; }
 if (mb_strlen($q) >= 2) {
@@ -69,6 +68,7 @@ if ($hhs) {
                 AND b.reference_number = f.reference_number AND b.federal_agency_prefix = '93')";
 }
 if ($flag !== null) { $conds[] = FIND_FLAGS[$flag] . ' = 1'; }
+if ($fy !== null) { $conds[] = 'g.audit_year = ?'; $params[] = $fy; }
 $FROM = "$TABLES WHERE " . implode(' AND ', $conds);
 
 if ($action === 'summary') {
@@ -116,7 +116,7 @@ if ($action === 'summary') {
 }
 
 if ($action === 'leads') {
-    $limit = q_int('limit', 100, 1, 500);
+    $limit = q_int('limit', 100, 1, 25000);   // paging uses 100; CSV export pulls up to the cap
     $offset = q_int('offset', 0, 0, 1000000);
     $SORTS = [
         'qc' => 'x.qc_amount',

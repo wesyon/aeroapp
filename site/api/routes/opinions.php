@@ -68,7 +68,6 @@ $q = trim((string) (q_str('q') ?? ''));
 
 $conds = $baseConds;
 $params = [];
-if ($fy !== null) { $conds[] = 'g.audit_year = ?'; $params[] = $fy; }
 if ($etype !== null) { aero_etype_cond($etype, $REGISTRY, 'g.auditee_uei', 'e.entity_type', $conds, $params); }
 if (preg_match('/^[A-Z]{2}$/', $stateF)) { $conds[] = 'COALESCE(e.state, g.auditee_state) = ?'; $params[] = $stateF; }
 if (mb_strlen($q) >= 2) {
@@ -76,6 +75,7 @@ if (mb_strlen($q) >= 2) {
     $params[] = '%' . $q . '%';
     $params[] = '%' . $q . '%';
 }
+if ($fy !== null) { $conds[] = 'g.audit_year = ?'; $params[] = $fy; }
 $FROM = "$TABLES WHERE " . implode(' AND ', $conds);
 
 if ($action === 'summary') {
@@ -125,7 +125,7 @@ if ($action === 'leads') {
         }
         $FROM = "$TABLES WHERE " . implode(' AND ', $conds);
     }
-    $limit = q_int('limit', 100, 1, 500);
+    $limit = q_int('limit', 100, 1, 25000);   // paging uses 100; CSV export pulls up to the cap
     $offset = q_int('offset', 0, 0, 1000000);
     $SORTS = [
         'expended' => $EXP,
@@ -142,7 +142,8 @@ if ($action === 'leads') {
     $ct->execute($params);
     $total = (int) $ct->fetchColumn();
 
-    $progCols = $level === 'program' ? ', fa.aln, fa.federal_program_name prog' : '';
+    // award_reference lets the UI drill from a program row to the findings behind its opinion
+    $progCols = $level === 'program' ? ', fa.aln, fa.federal_program_name prog, fa.award_reference award' : '';
     $st = $pdo->prepare("SELECT $HINT g.auditee_uei uei, COALESCE(e.display_name, g.auditee_name) name,
                 COALESCE(e.state, g.auditee_state) state, g.audit_year fy, g.report_id,
                 $CAT cat, $EXP expended$progCols" . ($level === 'fs' ? ', g.gaap_results' : '') . "
@@ -152,10 +153,37 @@ if ($action === 'leads') {
         'uei' => $r['uei'], 'name' => $r['name'], 'state' => $r['state'],
         'fy' => (int) $r['fy'], 'report_id' => $r['report_id'], 'cat' => $r['cat'],
         'gaap_results' => $r['gaap_results'] ?? null, 'expended' => (float) $r['expended'],
-        'aln' => $r['aln'] ?? null, 'program' => $r['prog'] ?? null,
+        'aln' => $r['aln'] ?? null, 'program' => $r['prog'] ?? null, 'award' => $r['award'] ?? null,
     ], $st->fetchAll());
     json_out(['mode' => 'leads', 'level' => $level, 'cat' => $cat, 'count' => count($rows),
               'total' => $total, 'offset' => $offset, 'rows' => $rows]);
 }
 
-json_out(['error' => 'unknown action', 'actions' => ['summary', 'leads']], 400);
+// Findings behind ONE major program's compliance opinion — the drill-down under a Program
+// Compliance row. Findings tie to a program through the fac_finding_awards bridge (award_reference);
+// is_modified_opinion marks the ones that drove the opinion to modified (see the finding<->opinion
+// walkthrough). MO-drivers first, then by reference.
+if ($action === 'program_findings') {
+    $rid = q_str('report_id');
+    $award = q_str('award');
+    if ($rid === null || $award === null) json_out(['error' => 'report_id and award required'], 400);
+    $st = $pdo->prepare(
+        "SELECT DISTINCT f.reference_number ref, f.type_requirement req,
+                f.is_material_weakness mw, f.is_significant_deficiency sd, f.is_questioned_costs qc,
+                f.is_modified_opinion mo, f.is_repeat_finding rpt, x.qc_amount
+         FROM fac_finding_awards b
+         JOIN fac_findings f ON f.report_id = b.report_id AND f.reference_number = b.reference_number
+         LEFT JOIN fac_finding_extract x ON x.report_id = f.report_id AND x.finding_ref_number = f.reference_number
+         WHERE b.report_id = ? AND b.award_reference = ?
+         ORDER BY f.is_modified_opinion DESC, f.reference_number");
+    $st->execute([$rid, $award]);
+    $rows = array_map(static fn ($r) => [
+        'ref' => $r['ref'], 'req' => $r['req'],
+        'mw' => (bool) $r['mw'], 'sd' => (bool) $r['sd'], 'qc' => (bool) $r['qc'],
+        'mo' => (bool) $r['mo'], 'repeat' => (bool) $r['rpt'],
+        'qc_amount' => $r['qc_amount'] !== null ? (float) $r['qc_amount'] : null,
+    ], $st->fetchAll());
+    json_out(['mode' => 'program_findings', 'report_id' => $rid, 'award' => $award, 'rows' => $rows]);
+}
+
+json_out(['error' => 'unknown action', 'actions' => ['summary', 'leads', 'program_findings']], 400);

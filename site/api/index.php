@@ -213,6 +213,7 @@ $handlers = [
     'geo_points'       => __DIR__ . '/routes/geo_points.php',
     'delinquency'      => __DIR__ . '/routes/delinquency.php',
     'opinions'         => __DIR__ . '/routes/opinions.php',
+    'convergence'      => __DIR__ . '/routes/convergence.php',
     'subaward'         => __DIR__ . '/routes/subaward.php',
     'usa_awards'       => __DIR__ . '/routes/usa_awards.php',
     'crosswalk'        => __DIR__ . '/routes/crosswalk.php',

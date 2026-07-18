@@ -1,5 +1,86 @@
 [
     {
+        "date":  "2026-07-17 12:41",
+        "commit":  "790e5d7",
+        "changes":  [
+                        "Web: auto-reload once on stale dynamic-import chunk (vite:preloadError)",
+                        "scope_keep: manual research/protection allowlist for demo prod",
+                        "Fix: scope_manifest must accumulate, not rebuild from the live drop-set",
+                        "Crosswalk families: IN/ID/GU/AS/MP rosters + PARKINGLOT update",
+                        "Demo-scope prune + scope_manifest so Search explains excluded entities"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 08:19",
+        "commit":  "4a36537",
+        "changes":  [
+                        "Remove the by-fiscal-year trend strip from all dashboards"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 07:33",
+        "commit":  "2a1b073",
+        "changes":  [
+                        "Dashboards: cross-surface convergence flags (4/4)"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 07:24",
+        "commit":  "738b939",
+        "changes":  [
+                        "Dashboards: by-fiscal-year trend strip / year picker (3/4)"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 07:14",
+        "commit":  "69988e7",
+        "changes":  [
+                        "Program Compliance: expand a row to the findings behind its opinion (2/4)"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 07:07",
+        "commit":  "ee641e5",
+        "changes":  [
+                        "Dashboards: CSV export + shareable filtered URLs (enhancement 1/4)"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 06:50",
+        "commit":  "ccb52cf",
+        "changes":  [
+                        "Rename Financial Statement -\u003e Financial Statements (nav, title, breadcrumb)"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 06:47",
+        "commit":  "6684465",
+        "changes":  [
+                        "deploy.ps1: don\u0027t require CREATE privilege to apply migrations"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 06:44",
+        "commit":  "083c48f",
+        "changes":  [
+                        "deploy.ps1: stop false-failing when ssh relays remote stderr"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 06:34",
+        "commit":  "85282cf",
+        "changes":  [
+                        "Split Modified Opinion into two dashboards: Financial Statement + Program Compliance"
+                    ]
+    },
+    {
+        "date":  "2026-07-17 06:05",
+        "commit":  "f551ca1",
+        "changes":  [
+                        "Rename Modified Opinions -\u003e Modified Opinion (nav + breadcrumb)"
+                    ]
+    },
+    {
         "date":  "2026-07-16 20:23",
         "commit":  "634484c",
         "changes":  [

@@ -44,7 +44,6 @@ $pattern = isset(RPT_PATTERN[$pattern]) ? $pattern : null;
 
 $conds = ['1=1'];
 $params = [];
-if ($fy !== null) { $conds[] = 'r.fy = ?'; $params[] = $fy; }
 if ($etype !== null) { aero_etype_cond($etype, $REGISTRY, 'r.uei', 'r.entity_type', $conds, $params); }
 if (preg_match('/^[A-Z]{2}$/', $stateF)) { $conds[] = 'r.state = ?'; $params[] = $stateF; }
 if (mb_strlen($q) >= 2) {
@@ -57,6 +56,7 @@ if ($depth !== null) {
     array_push($params, ...RPT_DEPTH[$depth]);
 }
 if ($pattern !== null) { $conds[] = RPT_PATTERN[$pattern]; }
+if ($fy !== null) { $conds[] = 'r.fy = ?'; $params[] = $fy; }
 $FROM = 'FROM repeat_preview r WHERE ' . implode(' AND ', $conds);
 
 if ($action === 'summary') {
@@ -100,7 +100,7 @@ if ($action === 'summary') {
 
 if ($action === 'leads') {
     $view = q_str('view') === 'recipients' ? 'recipients' : 'findings';
-    $limit = q_int('limit', 100, 1, 500);
+    $limit = q_int('limit', 100, 1, 25000);   // paging uses 100; CSV export pulls up to the cap
     $offset = q_int('offset', 0, 0, 1000000);
     $sortDir = q_str('dir') === 'asc' ? 'ASC' : 'DESC';
 

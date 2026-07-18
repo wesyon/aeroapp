@@ -400,11 +400,49 @@ if ($opt !== null) {
     cache_put($optsFile, ['entity_types' => $types, 'states' => $states]);
 }
 
+// Scope-aware empty state: a 0-result search may be hitting an entity DELIBERATELY excluded
+// from this quota-bound demo environment (clean-audit or non-HHS scope — see build_demo_scope.php).
+// scope_manifest records those with a human reason, so the UI can explain the absence instead of a
+// bare "no results". Wrapped: a deployment without scope_manifest just omits the notice.
+$scopeNotice = null;
+if ($total === 0 && isset($q) && $q !== null && strlen(trim((string) $q)) >= 3) {
+    try {
+        $like = '%' . $q . '%';
+        $sm = $pdo->prepare(
+            "SELECT uei, name, state, entity_type, latest_audit_year, reason, detail
+             FROM scope_manifest WHERE name LIKE ? OR uei LIKE ?
+             ORDER BY (uei = ?) DESC, name LIMIT 5"
+        );
+        $sm->execute([$like, $like, strtoupper(trim((string) $q))]);
+        $matches = $sm->fetchAll(PDO::FETCH_ASSOC);
+        if ($matches) {
+            $scopeNotice = [
+                'reason'  => 'excluded_from_demo',
+                'message' => 'No results in this demo environment — but the search matches '
+                           . (count($matches) === 1 ? 'an entity that exists' : 'entities that exist')
+                           . ' in the full dataset, excluded here for scope. Full detail is available in production.',
+                'matches' => array_map(fn ($m) => [
+                    'uei'          => $m['uei'],
+                    'name'         => $m['name'],
+                    'state'        => $m['state'],
+                    'entity_type'  => $m['entity_type'],
+                    'latest_year'  => $m['latest_audit_year'] !== null ? (int) $m['latest_audit_year'] : null,
+                    'scope_reason' => $m['reason'],
+                    'detail'       => $m['detail'],
+                ], $matches),
+            ];
+        }
+    } catch (\PDOException $e) {
+        error_log('recipients: scope_manifest lookup unavailable: ' . $e->getMessage());
+    }
+}
+
 json_out([
     'total'        => $total,
     'limit'        => $limit,
     'shown'        => count($rows),
     'rows'         => $rows,
+    'scope_notice' => $scopeNotice,
     'entity_types' => $types,
     'states'       => $states,
     'tiers'        => ['Clean', 'Minimal', 'Moderate', 'Elevated', 'Substantial', 'Severe'],

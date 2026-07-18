@@ -59,7 +59,6 @@ if ($action === 'summary') {
     $stateF = strtoupper((string) (q_str('state') ?? ''));
     $conds = [];
     $params = [];
-    if ($fy !== null) { $conds[] = 'd.fy = ?'; $params[] = $fy; }
     if ($etype !== null) { $etypeCond($etype, $conds, $params); }
     if (preg_match('/^[A-Z]{2}$/', $stateF)) { $conds[] = 'e.state = ?'; $params[] = $stateF; }
     $q = trim((string) (q_str('q') ?? ''));
@@ -68,6 +67,7 @@ if ($action === 'summary') {
         $params[] = '%' . $q . '%';
         $params[] = '%' . $q . '%';
     }
+    if ($fy !== null) { $conds[] = 'd.fy = ?'; $params[] = $fy; }
     $W = $conds ? 'WHERE ' . implode(' AND ', $conds) : '';
     $FROM = "FROM delinquency_preview d LEFT JOIN entity e ON e.uei = d.uei $W";
     $q = function (string $sql) use ($pdo, $params) { $st = $pdo->prepare($sql); $st->execute($params); return $st; };
@@ -136,7 +136,7 @@ if ($action === 'summary') {
 
 if ($action === 'leads') {
     $class = q_str('class');
-    $limit = q_int('limit', 50, 1, 500);
+    $limit = q_int('limit', 50, 1, 25000);   // paging uses 100; CSV export pulls up to the cap
     // q_int clamps its DEFAULT into [min,max] too, so an absent fy would become min and match
     // nothing — parse it as a string instead: absent/non-year = no year filter.
     $fyS   = q_str('fy');

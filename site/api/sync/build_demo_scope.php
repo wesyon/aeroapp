@@ -161,6 +161,23 @@ foreach ($byReport as $t) { $n = $countByReport($t); $total += $n; if ($n) out(s
 $nAward = $countByUei('usa_award', 'recipient_uei'); $total += $nAward; if ($nAward) out(sprintf('  %-30s %d', 'usa_award', $nAward));
 $nTxn = (int) $pdo->query('SELECT COUNT(*) FROM usa_award_txn_month t JOIN usa_award a ON a.award_id=t.award_id JOIN _drop d ON d.uei=a.recipient_uei')->fetchColumn();
 $total += $nTxn; if ($nTxn) out(sprintf('  %-30s %d', 'usa_award_txn_month', $nTxn));
+// usa_award_outlay_month is the twin of txn_month and MUST be pruned the same way, or every
+// dropped entity leaves its monthly outlay rows behind as orphans (483 MB table — it went
+// missing from this list originally because it was dropped from prod when this was written).
+// Guarded: the table is push-only and may legitimately be absent on some deployments.
+$nOutlay = 0;
+try {
+    $nOutlay = (int) $pdo->query('SELECT COUNT(*) FROM usa_award_outlay_month o JOIN usa_award a ON a.award_id=o.award_id JOIN _drop d ON d.uei=a.recipient_uei')->fetchColumn();
+    $total += $nOutlay; if ($nOutlay) out(sprintf('  %-30s %d', 'usa_award_outlay_month', $nOutlay));
+} catch (\PDOException $e) { /* table absent on this deployment — nothing to prune */ }
+// Orphan sweep preview: rows whose parent award is ALREADY gone. These accumulate independently
+// of this prune — sync_usa DELETEs+reinserts a recipient's awards nightly, and any award the API
+// stops returning leaves its month rows stranded and unjoinable.
+$nOrphTxn = (int) $pdo->query('SELECT COUNT(*) FROM usa_award_txn_month t LEFT JOIN usa_award a ON a.award_id=t.award_id WHERE a.award_id IS NULL')->fetchColumn();
+$nOrphOut = 0;
+try { $nOrphOut = (int) $pdo->query('SELECT COUNT(*) FROM usa_award_outlay_month o LEFT JOIN usa_award a ON a.award_id=o.award_id WHERE a.award_id IS NULL')->fetchColumn(); } catch (\PDOException $e) {}
+$total += $nOrphTxn + $nOrphOut;
+if ($nOrphTxn || $nOrphOut) out(sprintf('  %-30s %d (txn %d / outlay %d)', 'orphan month-rows', $nOrphTxn + $nOrphOut, $nOrphTxn, $nOrphOut));
 foreach ($byUei as $t) { $n = $countByUei($t, 'uei'); $total += $n; if ($n) out(sprintf('  %-30s %d', $t, $n)); }
 out(sprintf('  %-30s %d', 'TOTAL rows', $total));
 
@@ -176,9 +193,20 @@ $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
 foreach ($byReport as $t) {
     $pdo->exec("DELETE t FROM `$t` t JOIN _drop_reports r ON r.report_id = t.report_id");
 }
-// usa_award_txn_month first (child of usa_award), then usa_award
+// Month tables FIRST (they join through usa_award, so they must go before the parent rows),
+// then usa_award itself.
 $pdo->exec('DELETE t FROM usa_award_txn_month t JOIN usa_award a ON a.award_id=t.award_id JOIN _drop d ON d.uei=a.recipient_uei');
+try {
+    $pdo->exec('DELETE o FROM usa_award_outlay_month o JOIN usa_award a ON a.award_id=o.award_id JOIN _drop d ON d.uei=a.recipient_uei');
+} catch (\PDOException $e) { /* outlay table absent on this deployment */ }
 $pdo->exec('DELETE a FROM usa_award a JOIN _drop d ON d.uei = a.recipient_uei');
+// Orphan sweep: month rows whose parent award no longer exists (left by this prune's earlier
+// runs, and by sync_usa's nightly DELETE+reinsert churn). Unjoinable and invisible to the app —
+// pure quota waste, and the only thing keeping the outlay table scoped over time.
+$pdo->exec('DELETE t FROM usa_award_txn_month t LEFT JOIN usa_award a ON a.award_id=t.award_id WHERE a.award_id IS NULL');
+try {
+    $pdo->exec('DELETE o FROM usa_award_outlay_month o LEFT JOIN usa_award a ON a.award_id=o.award_id WHERE a.award_id IS NULL');
+} catch (\PDOException $e) { /* outlay table absent on this deployment */ }
 foreach ($byUei as $t) {
     $pdo->exec("DELETE t FROM `$t` t JOIN _drop d ON d.uei = t.uei");
 }

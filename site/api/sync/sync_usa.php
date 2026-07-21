@@ -30,17 +30,32 @@ function num($v) { return is_numeric($v) ? $v + 0 : null; }
 function dd($v): ?string { $v = s($v); if ($v === null) return null; $t = strtotime($v); return $t ? date('Y-m-d', $t) : null; }
 
 /** assistance award-type codes, grouped (USAspending rejects mixing groups in one
- * query), keyed by the usa_award.category each group maps to. Grants + direct
- * payments + loans cover what grantees receive; 09/11 (insurance/other) are
- * dropped to cut the request rate.
+ * query), keyed by the usa_award.category each group maps to.
+ *
+ * Type coverage tracks 2 CFR 200.502(a), which enumerates what counts as "Federal awards
+ * expended": (a)(1) grants + cooperative agreements -> 02-05; (a)(3) loan and loan guarantee
+ * proceeds -> 07/08; (a)(6) food commodities -> within 06; (a)(8) "the period when insurance is
+ * in force" -> 09. 11 rides with 09 as USAspending's "other" group.
+ * Type 10 (direct payment with UNRESTRICTED use) is payment to individuals, NOT assistance to
+ * the entity being audited, so it is excluded. It was previously pulled here, which silently
+ * re-added it every night and would have undone the reseed scope decision.
+ * 09/11 were previously dropped "to cut the request rate" — that predated establishing they are
+ * statutorily countable (~193k awards / $195.8B that would otherwise never refresh).
+ *
  * Loans have a DIFFERENT field mapping: 'Award Amount'/'Total Outlays' are not in
  * the Loan Award mappings (HTTP 400 — this silently broke every UEI's sync, since
  * the loans group always errored and the recipient was never marked done); loans
- * expose 'Loan Value' (face value) and 'Subsidy Cost' instead. */
+ * expose 'Loan Value' (face value) and 'Subsidy Cost' instead. 09/11 were verified against the
+ * live API on 2026-07-20 and DO accept 'Award Amount'/'Total Outlays' (HTTP 200) — do not assume
+ * a new group works, that is exactly how the loans break shipped.
+ * 09/11 also return ASST_AGG_ "MULTIPLE RECIPIENTS" rows with a NULL Recipient UEI. The per-award
+ * Recipient UEI guard below drops them, which is correct: they are cross-recipient rollups that
+ * would double-count against the per-recipient crawl. */
 const ASSIST_GROUPS = [
     'grant'          => ['codes' => ['02', '03', '04', '05'], 'money' => ['Award Amount', 'Total Outlays'], 'sort' => 'Award Amount'],
-    'direct_payment' => ['codes' => ['06', '10'],             'money' => ['Award Amount', 'Total Outlays'], 'sort' => 'Award Amount'],
+    'direct_payment' => ['codes' => ['06'],                   'money' => ['Award Amount', 'Total Outlays'], 'sort' => 'Award Amount'],
     'loan'           => ['codes' => ['07', '08'],             'money' => ['Loan Value', 'Subsidy Cost'],    'sort' => 'Loan Value'],
+    'other'          => ['codes' => ['09', '11'],             'money' => ['Award Amount', 'Total Outlays'], 'sort' => 'Award Amount'],
 ];
 
 function usa_post(string $path, array $body, int $tries = 5): array

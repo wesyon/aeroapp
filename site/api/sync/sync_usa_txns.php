@@ -30,9 +30,12 @@ Env::load(dirname($root) . '/.env');
 function s($v): ?string { if ($v === null) return null; $v = trim((string) $v); return $v === '' ? null : $v; }
 function num($v) { return is_numeric($v) ? $v + 0 : null; }
 
-// Assistance award-type codes, grouped (USAspending rejects mixing groups in one query). Same
-// split as sync_usa.php; obligations live on grants + direct payments + loans alike.
-const TXN_GROUPS = [['02', '03', '04', '05'], ['06', '10'], ['07', '08']];
+// Assistance award-type codes, grouped (USAspending rejects mixing groups in one query). MUST stay
+// in lockstep with sync_usa.php's ASSIST_GROUPS — this table is FK-bound to usa_award, so a type
+// pulled here but not there stores nothing, and a type pulled there but not here gets awards with
+// no month breakdown. See ASSIST_GROUPS for the 2 CFR 200.502(a) basis: 09 (insurance) and 11 are
+// IN per (a)(8); 10 (unrestricted direct payment to individuals) is OUT.
+const TXN_GROUPS = [['02', '03', '04', '05'], ['06'], ['07', '08'], ['09', '11']];
 
 function usa_post(string $path, array $body, int $tries = 5): array
 {

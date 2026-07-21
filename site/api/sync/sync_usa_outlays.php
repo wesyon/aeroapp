@@ -59,23 +59,31 @@ function usa_post(string $path, array $body): array
 
 /**
  * Pull one award's File C funding rows and reduce to calendar-month outlay deltas.
+ * @param bool|null $sawRows  OUT: true if the /funding/ endpoint returned ANY result rows for this
+ *                            award (used by the caller to distinguish a genuine no-outlay award from
+ *                            an empty/failed response — see the mark-done guard below).
  * @return array<string,float>  ['YYYY-MM-01' => outlay delta] (exact-zero deltas dropped; negatives kept)
  */
-function outlay_months(string $awardId, int $maxPages): array
+function outlay_months(string $awardId, int $maxPages, ?bool &$sawRows = null): array
 {
-    // [fy][reporting line][fiscal_period] => that LINE's cumulative gross_outlay_amount.
+    // [fy][series][fiscal_period] => that SERIES' cumulative gross_outlay_amount.
     //
-    // Keyed per reporting line, NOT summed flat. Each File C row is cumulative-within-FY for its own
-    // (federal_account, object_class, program_activity, DEFC) combination, so the cumulative series
-    // must be differenced PER LINE and the deltas summed — not the other way round. Summing first
-    // collapses the account dimension and only survives if every line reports in every period: when a
-    // line appears late its entire prior cumulative lands in one month, and when a line stops
-    // reporting the flat sum DROPS and invents a negative month that never happened.
+    // The cumulative must be differenced PER SERIES and the deltas summed — NOT summed flat first.
+    // Summing first collapses the account dimension and only survives if every line reports in every
+    // period: when a line appears late its whole prior cumulative lands in one month, and when a line
+    // stops reporting the flat sum DROPS and invents a negative month that never happened. (That was
+    // the sum-then-difference bug fixed 2026-07-15.)
     //
-    // Measured against live File C (2026-07-15), the two methods disagreed on 8 of 12 exposed awards
-    // (>=12 outlay months, >$50M, >=1 negative month) — ASST_NON_MA-2018-004_069 came out $614.0M the
-    // old way vs $203.5M per-line, a 3x overstatement. Awards with many lines (76, 86) drifted;
-    // awards with few (8, 9) agreed, which is exactly the predicted signature.
+    // The SERIES KEY is the FEDERAL ACCOUNT — deliberately NOT the finer
+    // (federal_account, object_class, program_activity, DEFC) tuple. object_class / program_activity /
+    // DEFC are re-classification dimensions that change MID-FY while the underlying cumulative keeps
+    // running; keying on them makes the differencing see a brand-new series on every reclassification
+    // and re-emit the entire cumulative, producing exact 2x/3x/4x over-counts (the key-churn bug found
+    // 2026-07-19). Validated against the PG mirror: differencing on a stable per-account series
+    // reproduces award_search.total_outlays where the fine-keyed version did not. gross_outlay_amount
+    // is cumulative at the account level, so summing the finer splits within (federal_account, period)
+    // before differencing is exactly right.
+    $sawRows = false;
     $cum = [];
     $page = 1;
     do {
@@ -85,15 +93,16 @@ function outlay_months(string $awardId, int $maxPages): array
             'sort'     => 'reporting_fiscal_date', 'order' => 'asc',
         ]);
         foreach (($res['results'] ?? []) as $r) {
+            $sawRows = true;                                         // the endpoint answered with data
             $go = $r['gross_outlay_amount'] ?? null;
             if ($go === null || !is_numeric($go)) continue;         // obligation-only rows carry null here
             $fy = (int) ($r['reporting_fiscal_year'] ?? 0);
             $fm = (int) ($r['reporting_fiscal_month'] ?? 0);        // 1=Oct … 12=Sep (federal fiscal period)
             if ($fy <= 0 || $fm < 1 || $fm > 12) continue;
-            // The endpoint returns the full account dimension; identify the reporting line with it.
-            $line = ($r['federal_account'] ?? '?') . '|' . ($r['object_class'] ?? '')
-                  . '|' . ($r['program_activity_code'] ?? '') . '|' . ($r['disaster_emergency_fund_code'] ?? '');
-            // += guards the case where two rows share a line+period (indistinguishable => same series)
+            // Series = federal account only. Summing the object_class/program_activity/DEFC splits into
+            // it per period gives that account's cumulative; differencing that stable series avoids the
+            // mid-FY-reclassification churn.
+            $line = (string) ($r['federal_account'] ?? '?');
             $cum[$fy][$line][$fm] = ($cum[$fy][$line][$fm] ?? 0) + (float) $go;
         }
         $more = (bool) ($res['page_metadata']['hasNext'] ?? false);
@@ -252,7 +261,21 @@ $mark = $pdo->prepare("UPDATE usa_award SET outlay_synced = UTC_TIMESTAMP() WHER
 
 foreach ($ids as $awardId) {
     try {
-        $months = outlay_months($awardId, $maxPages);
+        $sawRows = false;
+        $months = outlay_months($awardId, $maxPages, $sawRows);
+        // Guard against a DATA-DESTROYING no-op: if /funding/ returned NO rows at all (a transient
+        // error surfaced as an empty 200, a dropped connection deferred by usa_post, etc.) do NOT
+        // delete the award's existing months and do NOT stamp outlay_synced — leave it exactly as-is
+        // so the next --oldest pass re-queues and retries it. Every award reaching here has a nonzero
+        // lifetime outlay (MATERIAL), so a truly empty response is suspect, not "genuinely no outlays".
+        // (A response WITH rows but no gross_outlay lines is a legit zero-outlay award: $sawRows=true,
+        // $months=[], and we correctly clear stale rows + mark it done below.)
+        if (!$sawRows) {
+            fwrite(STDERR, "  $awardId: no File C rows returned — left unchanged for retry\n");
+            continue;
+        }
+        // delete + reload + mark as one unit so a mid-award failure can't leave partial months
+        $pdo->beginTransaction();
         $del->execute([$awardId]);
         if ($months) {
             // insert this award's month rows in one statement (each award has ~a few dozen at most)
@@ -262,9 +285,11 @@ foreach ($ids as $awardId) {
             $pdo->prepare("INSERT INTO usa_award_outlay_month (award_id, ym, outlay) VALUES $ph")->execute($vals);
             $rows += count($months);
         }
-        $mark->execute([$awardId]);   // mark done even when empty, so it isn't recrawled next run
+        $mark->execute([$awardId]);   // record success only when the API actually answered
+        $pdo->commit();
         if ($sleepUs) usleep($sleepUs);   // per-award pacing (--sleepms); lower it when sharding
     } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
         fwrite(STDERR, "  $awardId error: " . substr($e->getMessage(), 0, 100) . "\n");
     }
     // Heartbeat on award count OR every ~30s — the time-based beat keeps progress_at fresh through the

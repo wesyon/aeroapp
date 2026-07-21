@@ -219,6 +219,7 @@ $handlers = [
     'crosswalk'        => __DIR__ . '/routes/crosswalk.php',
     'crosscheck'       => __DIR__ . '/routes/crosscheck.php',
     'signals'          => __DIR__ . '/routes/signals.php',
+    'case_summary'     => __DIR__ . '/routes/case_summary.php',
 ];
 
 if (!isset($handlers[$route])) {

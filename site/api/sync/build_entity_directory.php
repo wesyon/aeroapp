@@ -36,6 +36,12 @@ if (!(int) $pdo->query("SELECT GET_LOCK('aero_entity_directory', 0)")->fetchColu
     exit(1);
 }
 
+// display_name falls back to the USAspending recipient name (usa_recipient.name) when an entity has
+// no active FAC report. The funding-first usa_award rebuild adds FUNDED-BUT-UNAUDITED entities
+// (never-filers) that by definition have no FAC row; the bare `SET display_name = a.nm` used to NULL
+// them on every nightly, blanking their identity. Reap-by-NULL still applies to entities with NO
+// source at all, and Search's contract is unchanged (it keys on latest_audit_year IS NOT NULL, which
+// these still lack) — this only stops the directory from erasing a name we do have.
 $affected = $pdo->exec(
     "UPDATE entity e
        LEFT JOIN (
@@ -56,7 +62,8 @@ $affected = $pdo->exec(
          SELECT DISTINCT auditee_uei uei FROM fac_federal_awards
          WHERE federal_agency_prefix = '93' AND auditee_uei IS NOT NULL
        ) h ON h.uei = e.uei
-       SET e.display_name      = a.nm,
+       LEFT JOIN usa_recipient u ON u.uei = e.uei
+       SET e.display_name      = COALESCE(a.nm, u.name),
            e.entity_type       = a.et,
            e.state             = COALESCE(a.st, e.state),
            e.audit_count       = c.ac,

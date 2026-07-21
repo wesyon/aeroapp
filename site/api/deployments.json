@@ -1,5 +1,48 @@
 [
     {
+        "date":  "2026-07-20 15:38",
+        "commit":  "cc6b144",
+        "changes":  [
+                        "Case memo: make every section collapsible"
+                    ]
+    },
+    {
+        "date":  "2026-07-20 15:24",
+        "commit":  "61588a6",
+        "changes":  [
+                        "Case memo: add the 7-level AERO risk evaluation near the top"
+                    ]
+    },
+    {
+        "date":  "2026-07-20 15:13",
+        "commit":  "f636ba4",
+        "changes":  [
+                        "Merge fix/sync-scope-200502 into feat/case-summary",
+                        "Merge fix/entity-directory-name-fallback into feat/case-summary",
+                        "Keep funded-but-unaudited entity names instead of NULLing them nightly",
+                        "Add Executive Summary case memo generator (unlisted prototype)"
+                    ]
+    },
+    {
+        "date":  "2026-07-20 12:28",
+        "commit":  "4fe0d3f",
+        "changes":  [
+                        "Sync award types to 2 CFR 200.502: add 09/11 (insurance, other), drop 10"
+                    ]
+    },
+    {
+        "date":  "2026-07-20 11:59",
+        "commit":  "123ef10",
+        "changes":  [
+                        "Merge pull request #28 from wesyon/fix/outlay-month-key-churn",
+                        "Fix outlay-month key-churn; pause the buggy nightly crawl",
+                        "Demo-scope prune: also scope outlay months + sweep orphaned month rows",
+                        "Nightly: add txn/outlay month tables to the weekly OPTIMIZE",
+                        "USAspending export: add the \"By FY \u0026 Agency\" grouped sheet",
+                        "svc.ps1: drive the PostgreSQL service, not the removed pg_ctl path"
+                    ]
+    },
+    {
         "date":  "2026-07-17 12:41",
         "commit":  "790e5d7",
         "changes":  [
